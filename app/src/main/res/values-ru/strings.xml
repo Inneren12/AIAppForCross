@@ -1,0 +1,120 @@
+ <resources>
+
+     <!-- navigation -->
+     <string name="nav_editor">Редактор</string>
+     <string name="nav_tab_import">Импорт</string>
+     <string name="nav_tab_preprocess">Предобработка</string>
+     <string name="nav_tab_size">Размер</string>
+     <string name="nav_tab_palette">Палитра</string>
+     <string name="nav_tab_options">Опции</string>
+     <string name="nav_tab_preview">Предпросмотр</string>
+     <!-- common -->
+    <string name="common_apply">Применить</string>
+    <string name="common_open">Открыть</string>
+    <string name="common_share">Поделиться</string>
+    <string name="common_delete">Удалить</string>
+    <string name="common_ok">OK</string>
+    <string name="common_cancel">Отмена</string>
+     <string name="common_undo">Отменить</string>
+     <string name="common_redo">Повторить</string>
+
+    <!-- import -->
+    <string name="import_title">Импорт</string>
+    <string name="import_description">Откройте изображение через системный файл‑пикер. После выбора появится мини‑превью и размеры.</string>
+    <string name="import_select_image">Выбрать изображение</string>
+    <string name="import_mini_preview">Мини‑превью</string>
+    <string name="import_no_image">Изображение не выбрано.</string>
+    <string name="import_recent_exports">Последние экспорты</string>
+    <string name="import_size_px">Размер: %1$d×%2$d px</string>
+
+    <!-- preview -->
+    <string name="preview_title">Предпросмотр</string>
+    <string name="preview_grid">Сетка</string>
+    <string name="preview_symbols">Символы</string>
+    <string name="preview_export_cell_label">Клетка (экспорт):</string>
+    <string name="preview_export_cell_px">%1$d px</string>
+    <string name="preview_export_png">Экспорт PNG</string>
+    <string name="preview_export_pdf">Экспорт PDF</string>
+    <string name="preview_prompt_import">Загрузите изображение во вкладке «Импорт».</string>
+
+     <!-- preview zoom -->
+     <string name="preview_zoom_fit">Вписать</string>
+     <string name="preview_zoom_100">100%</string>
+     <string name="preview_zoom_in">Приблизить</string>
+     <string name="preview_zoom_out">Отдалить</string>
+     <string name="preview_zoom_hud">%1$d%%</string>
+
+    <!-- palette -->
+    <string name="palette_assets_title">Палитра (из assets)</string>
+    <string name="palette_max_colors">Максимум цветов</string>
+    <string name="palette_zero_means_no_limit">0 = без ограничения</string>
+    <string name="palette_metric_title">Метрика цвета</string>
+    <string name="palette_metric_de2000">ΔE2000</string>
+    <string name="palette_metric_de76">ΔE76 (Lab)</string>
+    <string name="palette_metric_oklab">OKLab</string>
+    <string name="palette_dithering_title">Дизеринг</string>
+    <string name="palette_dithering_none">Без дизеринга</string>
+    <string name="palette_dithering_fs">FS</string>
+    <string name="palette_dithering_atkinson">Atkinson</string>
+    <string name="palette_kmeans_note">K‑means: цвета НЕ берём из палитры, а сокращаем до K.</string>
+    <string name="palette_threads_title">Нитки (после «Применить»)</string>
+    <string name="palette_estimate_params">Параметры оценки:</string>
+    <string name="palette_fabric_st_per_inch">Ткань: ст./дюйм</string>
+    <string name="palette_strands">Сложений</string>
+    <string name="palette_waste_pct">Потери, %</string>
+    <string name="palette_press_apply_to_calc_threads">Нажмите «Применить», чтобы рассчитать нитки.</string>
+    <string name="palette_set_symbols">Задать символы</string>
+    <string name="palette_symbol_for_x">Символ для %1$s</string>
+    <string name="palette_symbol_1_char">Символ (1 знак)</string>
+     <string name="palette_auto_symbols">Авто‑символы (подобрать наиболее читаемый набор)</string>
+
+    <!-- preprocess -->
+    <string name="preprocess_bright_contrast">Яркость / Контраст</string>
+    <string name="preprocess_brightness_pct">Яркость: %1$d %%</string>
+    <string name="preprocess_contrast_pct">Контраст: %1$d %%</string>
+    <string name="preprocess_gamma">Гамма</string>
+    <string name="preprocess_gamma_value">γ = %1$.2f</string>
+    <string name="preprocess_auto_levels">Автоуровни (растяжка гистограммы)</string>
+    <string name="preprocess_denoise">Шумоподавление</string>
+    <string name="preprocess_denoise_none">Нет</string>
+    <string name="preprocess_denoise_low">Слабое</string>
+    <string name="preprocess_denoise_medium">Среднее</string>
+    <string name="preprocess_denoise_high">Сильное</string>
+    <string name="preprocess_tonal">Тональная компрессия (жёсткий контраст → мягче)</string>
+    <string name="preprocess_tonal_value">%1$.2f</string>
+    <string name="preprocess_note_before">Все параметры применяются ДО ресемплинга и квантования.</string>
+
+    <!-- size -->
+    <string name="size_title">Размер</string>
+    <string name="size_st_per_inch">ст/дюйм</string>
+    <string name="size_st_per_cm">ст/см</string>
+    <string name="size_preset">Предустановка</string>
+    <string name="size_by_width">По ширине</string>
+    <string name="size_by_height">По высоте</string>
+    <string name="size_by_dpi">По DPI</string>
+    <string name="size_width_stitches">Ширина (крестики)</string>
+    <string name="size_height_stitches">Высота (крестики)</string>
+    <string name="size_density">Плотность (ст/дюйм или ст/см)</string>
+    <string name="size_keep_aspect">Сохранять пропорции</string>
+    <string name="size_pages_target">Страниц (цель)</string>
+    <string name="size_density_label_inch">%1$d ст/дюйм</string>
+    <string name="size_density_label_cm">%1$.2f ст/см</string>
+    <string name="size_physical_summary">При плотности ~%1$.2f: ширина %2$.2f&quot; (%3$.2f см), высота %4$.2f&quot; (%5$.2f см)</string>
+    <string name="size_physical_size">%1$.2f × %2$.2f</string>
+
+    <!-- options -->
+    <string name="options_palette_title">Палитра</string>
+    <string name="options_dmc_as_is">DMC (как есть)</string>
+    <string name="options_adaptive_to_dmc">Адаптивная → DMC</string>
+    <string name="options_merge_deltae">Слияние близких цветов (ΔE): %1$.2f</string>
+    <string name="options_dither_title">Дизеринг (умный FS)</string>
+    <string name="options_dither_strength_pct">Сила: %1$d %%</string>
+    <string name="options_clean_singles">Подчищать одиночные крестики</string>
+    <string name="options_resample_title">Ресэмплинг</string>
+    <string name="options_resample_avg">Усреднение по клетке</string>
+    <string name="options_resample_simple">Простой (быстрее)</string>
+    <string name="options_preblur_sigma">Лёгкое размытие перед ресэмплом σ = %1$.2f px</string>
+    <string name="options_recommendation">Рекомендуется: «Усреднение», FS ~50%, подчистка одиночных.</string>
+     <string name="options_edge_enhance">Подчеркнуть контуры перед квантованием</string>
+     <string name="app_name">AppForCross</string>
+</resources>

@@ -1,0 +1,9 @@
+<resources xmlns:tools="http://schemas.android.com/tools">
+
+    <style name="Theme.AppForCross" parent="Theme.Material3.DayNight.NoActionBar">
+        <!-- Кастомизации цветов/шрифтов тут -->
+        <item name="android:statusBarColor">?attr/colorSurface</item>
+        <item name="android:navigationBarColor">?attr/colorSurface</item>
+    </style>
+
+</resources>

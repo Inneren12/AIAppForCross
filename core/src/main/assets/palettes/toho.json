@@ -1,0 +1,19 @@
+{
+  "id": "toho",
+  "name": "TOHO Beads",
+  "type": "bead",
+  "colors": [
+    {
+      "id": 1,
+      "code": "TR-11-1",
+      "name": "Crystal",
+      "rgb": "#EDEDED"
+    },
+    {
+      "id": 21,
+      "code": "TR-11-21",
+      "name": "Black",
+      "rgb": "#111111"
+    }
+  ]
+}

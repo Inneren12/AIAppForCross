@@ -1,0 +1,121 @@
+<resources>
+
+    <!-- navigation -->
+    <string name="nav_editor">Editor</string>
+    <string name="nav_tab_import">Import</string>
+    <string name="nav_tab_preprocess">Preprocess</string>
+    <string name="nav_tab_size">Size</string>
+    <string name="nav_tab_palette">Palette</string>
+    <string name="nav_tab_options">Options</string>
+    <string name="nav_tab_preview">Preview</string>
+
+    <!-- common -->
+    <string name="common_apply">Apply</string>
+    <string name="common_open">Open</string>
+    <string name="common_share">Share</string>
+    <string name="common_delete">Delete</string>
+    <string name="common_ok">OK</string>
+    <string name="common_cancel">Cancel</string>
+    <string name="common_undo">Undo</string>
+    <string name="common_redo">Redo</string>
+
+    <!-- import -->
+    <string name="import_title">Import</string>
+    <string name="import_description">Pick an image using the system picker. A mini preview and size will be shown.</string>
+    <string name="import_select_image">Choose image</string>
+    <string name="import_mini_preview">Mini preview</string>
+    <string name="import_no_image">No image selected.</string>
+    <string name="import_recent_exports">Recent exports</string>
+    <string name="import_size_px">Size: %1$d×%2$d px</string>
+
+    <!-- preview -->
+    <string name="preview_title">Preview</string>
+    <string name="preview_grid">Grid</string>
+    <string name="preview_symbols">Symbols</string>
+    <string name="preview_export_cell_label">Cell (export):</string>
+    <string name="preview_export_cell_px">%1$d px</string>
+    <string name="preview_export_png">Export PNG</string>
+    <string name="preview_export_pdf">Export PDF</string>
+    <string name="preview_prompt_import">Load an image on the Import tab.</string>
+
+    <!-- preview zoom -->
+    <string name="preview_zoom_fit">Fit</string>
+    <string name="preview_zoom_100">100%</string>
+    <string name="preview_zoom_in">Zoom in</string>
+    <string name="preview_zoom_out">Zoom out</string>
+    <string name="preview_zoom_hud">%1$d%%</string>
+
+    <!-- palette -->
+    <string name="palette_assets_title">Palette (from assets)</string>
+    <string name="palette_max_colors">Max colors</string>
+    <string name="palette_zero_means_no_limit">0 = no limit</string>
+    <string name="palette_metric_title">Color metric</string>
+    <string name="palette_metric_de2000">ΔE2000</string>
+    <string name="palette_metric_de76">ΔE76 (Lab)</string>
+    <string name="palette_metric_oklab">OKLab</string>
+    <string name="palette_dithering_title">Dithering</string>
+    <string name="palette_dithering_none">No dithering</string>
+    <string name="palette_dithering_fs">FS</string>
+    <string name="palette_dithering_atkinson">Atkinson</string>
+    <string name="palette_kmeans_note">K-means: reduce colors to K (not from palette).</string>
+    <string name="palette_threads_title">Threads (after Apply)</string>
+    <string name="palette_estimate_params">Estimation params:</string>
+    <string name="palette_fabric_st_per_inch">Fabric: st/inch</string>
+    <string name="palette_strands">Strands</string>
+    <string name="palette_waste_pct">Waste, %</string>
+    <string name="palette_press_apply_to_calc_threads">Press “Apply” to compute threads.</string>
+    <string name="palette_set_symbols">Set symbols</string>
+    <string name="palette_symbol_for_x">Symbol for %1$s</string>
+    <string name="palette_symbol_1_char">Symbol (1 char)</string>
+    <string name="palette_auto_symbols">Auto symbols (pick best readable set)</string>
+
+    <!-- preprocess -->
+    <string name="preprocess_bright_contrast">Brightness / Contrast</string>
+    <string name="preprocess_brightness_pct">Brightness: %1$d %%</string>
+    <string name="preprocess_contrast_pct">Contrast: %1$d %%</string>
+    <string name="preprocess_gamma">Gamma</string>
+    <string name="preprocess_gamma_value">γ = %1$.2f</string>
+    <string name="preprocess_auto_levels">Auto levels (histogram stretch)</string>
+    <string name="preprocess_denoise">Denoise</string>
+    <string name="preprocess_denoise_none">None</string>
+    <string name="preprocess_denoise_low">Low</string>
+    <string name="preprocess_denoise_medium">Medium</string>
+    <string name="preprocess_denoise_high">High</string>
+    <string name="preprocess_tonal">Tonal compression (make contrast softer)</string>
+    <string name="preprocess_tonal_value">%1$.2f</string>
+    <string name="preprocess_note_before">All params are applied BEFORE resampling and quantization.</string>
+
+    <!-- size -->
+    <string name="size_title">Size</string>
+    <string name="size_st_per_inch">st/inch</string>
+    <string name="size_st_per_cm">st/cm</string>
+    <string name="size_preset">Preset</string>
+    <string name="size_by_width">By width</string>
+    <string name="size_by_height">By height</string>
+    <string name="size_by_dpi">By DPI</string>
+    <string name="size_width_stitches">Width (stitches)</string>
+    <string name="size_height_stitches">Height (stitches)</string>
+    <string name="size_density">Density (st/inch or st/cm)</string>
+    <string name="size_keep_aspect">Keep aspect ratio</string>
+    <string name="size_pages_target">Pages (target)</string>
+    <string name="size_density_label_inch">%1$d st/inch</string>
+    <string name="size_density_label_cm">%1$.2f st/cm</string>
+    <string name="size_physical_summary">At density ~%1$.2f: width %2$.2f&quot; (%3$.2f cm), height %4$.2f&quot; (%5$.2f cm)</string>
+    <string name="size_physical_size">%1$.2f × %2$.2f</string>
+
+    <!-- options -->
+    <string name="options_palette_title">Palette</string>
+    <string name="options_dmc_as_is">DMC (as is)</string>
+    <string name="options_adaptive_to_dmc">Adaptive → DMC</string>
+    <string name="options_merge_deltae">Merge close colors (ΔE): %1$.2f</string>
+    <string name="options_dither_title">Dithering (smart FS)</string>
+    <string name="options_dither_strength_pct">Strength: %1$d %%</string>
+    <string name="options_clean_singles">Clean single stitches</string>
+    <string name="options_resample_title">Resampling</string>
+    <string name="options_resample_avg">Average per cell</string>
+    <string name="options_resample_simple">Simple (faster)</string>
+    <string name="options_preblur_sigma">Pre-blur σ = %1$.2f px</string>
+    <string name="options_recommendation">Recommended: “Average”, FS ~50%, clean singles.</string>
+    <string name="options_edge_enhance">Enhance edges before quantization</string>
+    <string name="app_name">AppForCross</string>
+</resources>

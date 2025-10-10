@@ -1,0 +1,19 @@
+{
+  "id": "anchor",
+  "name": "Anchor Threads",
+  "type": "thread",
+  "colors": [
+    {
+      "id": 403,
+      "code": "403",
+      "name": "Black",
+      "rgb": "#000000"
+    },
+    {
+      "id": 20,
+      "code": "20",
+      "name": "Red",
+      "rgb": "#CC0D1A"
+    }
+  ]
+}

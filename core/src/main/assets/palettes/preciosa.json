@@ -1,0 +1,19 @@
+{
+  "id": "preciosa",
+  "name": "Preciosa Beads",
+  "type": "bead",
+  "colors": [
+    {
+      "id": 23980,
+      "code": "23980",
+      "name": "Jet",
+      "rgb": "#0A0A0A"
+    },
+    {
+      "id": 83110,
+      "code": "83110",
+      "name": "Ruby",
+      "rgb": "#9B0313"
+    }
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "id": "dmc",
+  "name": "DMC Threads",
+  "type": "thread",
+  "colors": [
+    {
+      "id": 310,
+      "code": "310",
+      "name": "Black",
+      "rgb": "#000000"
+    },
+    {
+      "id": 321,
+      "code": "321",
+      "name": "Red",
+      "rgb": "#C4002D"
+    },
+    {
+      "id": 747,
+      "code": "747",
+      "name": "Sky Blue",
+      "rgb": "#E1F2F9"
+    }
+  ]
+}

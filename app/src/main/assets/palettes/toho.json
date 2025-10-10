@@ -1,0 +1,47 @@
+{
+  "id": "toho",
+  "name": "TOHO Beads",
+  "type": "bead",
+  "colors": [
+    {
+      "code": "150",
+      "name": "Dusty Rose Ultra Very Dark",
+      "rgb": "B6114C"
+    },
+    {
+      "code": "151",
+      "name": "Dusty Rose Very Light",
+      "rgb": "F8D0D8"
+    },
+    {
+      "code": "152",
+      "name": "Shell Pink Medium Light",
+      "rgb": "E0A4A0"
+    },
+    {
+      "code": "153",
+      "name": "Violet Very Light",
+      "rgb": "E8CCE0"
+    },
+    {
+      "code": "154",
+      "name": "Grape Very Dark",
+      "rgb": "4D2633"
+    },
+    {
+      "code": "155",
+      "name": "Blue Violet Medium Dark",
+      "rgb": "8D7EB3"
+    },
+    {
+      "code": "156",
+      "name": "Blue Violet Medium Light",
+      "rgb": "9196C3"
+    },
+    {
+      "code": "157",
+      "name": "Cornflower Blue Very Light",
+      "rgb": "BAC4E2"
+    }
+  ]
+}
