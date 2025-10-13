@@ -9,7 +9,7 @@ plugins {
 android {
     namespace = "com.appforcross.core"
     compileSdk = 35
-    defaultConfig { minSdk = 29 }
+    defaultConfig { minSdk = 31 }
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -35,7 +35,6 @@ dependencies {
     implementation("androidx.compose.ui:ui-text")
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.1")
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.1")
     implementation("org.jetbrains.kotlinx:kotlinx-datetime:0.6.1")
     implementation("androidx.activity:activity-ktx:1.9.2")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")

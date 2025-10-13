@@ -1,61 +1,126 @@
-// Hash c961ad5792f71bc7811ca93b6d1306b8
 plugins {
     id("com.android.application")
-    id("org.jetbrains.kotlin.android")
-    id("org.jetbrains.kotlin.plugin.serialization")
+    kotlin("android")
+    kotlin("plugin.serialization")
     id("org.jetbrains.kotlin.plugin.compose")
 }
+
 android {
     namespace = "com.appforcross.app"
     compileSdk = 35
+
     defaultConfig {
-        applicationId = "com.appforcross.app"
-        minSdk = 29
+        applicationId = "com.appforcross.editor"
+        minSdk = 31
         targetSdk = 35
+
         versionCode = 1
-        versionName = "1.0"
+        versionName = "1.0.0"
+
+        vectorDrawables.useSupportLibrary = true
     }
 
+    buildTypes {
+        debug {
+            // В отладке ресурсы/код не сжимаем
+            isMinifyEnabled = false
+            isShrinkResources = false
+        }
+        release {
+            // В релизе включаем R8 и ресурс-ши́нкер
+            isMinifyEnabled = true
+            isShrinkResources = true
+
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
+
+            // Если подпись через подп.конфиг — раскомментируй и настрой:
+            // signingConfig = signingConfigs.getByName("release")
+        }
+    }
+
+    // Если нужны подписи из keystore:
+    // signingConfigs {
+    //     create("release") {
+    //         storeFile = file("keystore.jks")
+    //         storePassword = System.getenv("KEYSTORE_PASSWORD")
+    //         keyAlias = System.getenv("KEY_ALIAS")
+    //         keyPassword = System.getenv("KEY_PASSWORD")
+    //     }
+    // }
+
+    buildFeatures {
+        compose = true
+        buildConfig = true
+    }
+
+    // Версию компилятора Compose подбери под свою сборку (или вынеси в версио‑каталог)
+    composeOptions {
+        kotlinCompilerExtensionVersion = "1.5.14"
+    }
+
+    // Java 17 (рекомендуется для AGP 8.x + Compose)
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
     kotlinOptions {
         jvmTarget = "17"
+        freeCompilerArgs += listOf(
+            "-Xjvm-default=all"
+        )
     }
 
-kotlin {
-    jvmToolchain(17)
-}
+    packaging {
+        resources {
+            // Часто помогает от дубликатов лицензий/метаданных
+            excludes += "/META-INF/{AL2.0,LGPL2.1}"
+        }
+    }
+
+    lint {
+        // В релиз перед выкладкой можно сделать true
+        abortOnError = false
+        checkReleaseBuilds = true
+    }
 }
 
 dependencies {
+    // Compose BOM — подтягивает согласованные версии UI/Material и т.п.
     implementation(platform("androidx.compose:compose-bom:2024.09.01"))
-
-    // 2) Compose UI
     implementation("androidx.compose.ui:ui")
-    implementation("androidx.compose.ui:ui-text")
-        //implementation("androidx.compose.ui:ui-text:1.7.1")// <-- тут живёт KeyboardOptions
-    implementation("androidx.compose.foundation:foundation")
+    implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.material3:material3")
-    implementation("androidx.compose.material:material-icons-extended")
-    implementation(libs.foundation)
     debugImplementation("androidx.compose.ui:ui-tooling")
 
-    // 3) AndroidX
     implementation("androidx.activity:activity-compose:1.9.2")
-    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.4")
-    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.4")
-    implementation("androidx.core:core-ktx:1.13.1")
+    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.6")
+    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.6")
 
-    // 4) KotlinX
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.1")
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.1")
-    implementation("org.jetbrains.kotlinx:kotlinx-datetime:0.6.1")
+    // Документы/SAF
+    implementation("androidx.documentfile:documentfile:1.0.1")
 
-    // 5) Материалы/совместимость (не обязательно)
+    // DataStore (если используешь SettingsRepository)
+    implementation("androidx.datastore:datastore-preferences:1.1.1")
+
+    // Kotlinx Serialization JSON
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3")
+    implementation("androidx.core:core-splashscreen:1.0.1")
     implementation("com.google.android.material:material:1.12.0")
-    implementation("androidx.appcompat:appcompat:1.7.0")
+
+    // (Опционально) Coil для картинок
+    // implementation("io.coil-kt:coil-compose:2.6.0")
+
+    // Тесты
+    testImplementation(kotlin("test"))
+    androidTestImplementation("androidx.test.ext:junit:1.2.1")
+    androidTestImplementation("androidx.test.espresso:espresso-core:3.6.1")
+    androidTestImplementation(platform("androidx.compose:compose-bom:2024.09.01"))
+    androidTestImplementation("androidx.compose.ui:ui-test-junit4")
+
+    implementation("androidx.compose.material:material-icons-extended")
 
     implementation(project(":core"))
 }

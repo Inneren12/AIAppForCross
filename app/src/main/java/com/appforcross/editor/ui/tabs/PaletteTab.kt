@@ -1,6 +1,7 @@
 // C
 package com.appforcross.editor.ui.tabs
 
+import android.util.Log
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
@@ -97,6 +98,11 @@ fun PaletteTab(vm: EditorViewModel) {
 
         // --- Секция «Нитки» после «Применить» ---
             val threads by vm.threads.collectAsState()
+        LaunchedEffect(threads) {
+            Log.d("PaletteTab", "UI threads[${threads.size}]: " +
+                    threads.joinToString { "${it.code}:${it.percent}%(${it.count})" })
+        }
+
             val symbolDraft by vm.symbolDraft.collectAsState()
             val symbolsApplied by vm.symbolsPreview.collectAsState()
             var showThreads by rememberSaveable { mutableStateOf(true) }

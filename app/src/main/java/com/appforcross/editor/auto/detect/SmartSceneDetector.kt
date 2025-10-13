@@ -2,6 +2,8 @@ package com.appforcross.editor.auto.detect
 
 import android.graphics.Bitmap
 import android.util.Log
+import java.util.Locale
+import kotlin.collections.iterator
 import kotlin.math.*
 
 // SmartSceneDetector (Android, :core)
@@ -922,10 +924,10 @@ object SmartSceneDetector {
 
     private fun logDecision(mode: Mode, conf: Float, scores: Map<Mode, Float>, f: Features, toggles: Toggles?) {
         val tag = "SmartScene"
-        Log.d(tag, "MODE=$mode conf=${"%.2f".format(java.util.Locale.US, conf)} scores=$scores toggles=$toggles")
+        Log.d(tag, "MODE=$mode conf=${"%.2f".format(Locale.US, conf)} scores=$scores toggles=$toggles")
         Log.d(tag, "Top8=${fmt(f.top8Cover)} C16=${f.c16} Grad=${fmt(f.gradScore)} Edge=${fmt(f.edgeSharp)} Halo=${fmt(f.alphaHalo)} Half=${fmt(f.halftone)}")
         Log.d(tag, "Text=${fmt(f.textLike)} CV=${fmt(f.strokeCV)} Outline=${fmt(f.outlineRatio)} Orth=${fmt(f.orthEdge)} Block=${fmt(f.blockiness)}")
         Log.d(tag, "Largest=${fmt(f.largestRegion)} Tile=${fmt(f.tileScore)} Rel=${fmt(f.tileRelPeriod)} Back=${fmt(f.backgroundPct)} Rare=${fmt(f.rarePct)}")
     }
-    private fun fmt(v: Float) = String.format(java.util.Locale.US, "%.3f", v)
+    private fun fmt(v: Float) = String.format(Locale.US, "%.3f", v)
 }

@@ -23,10 +23,18 @@ import com.appforcross.core.image.DecodedImage
 import android.content.Intent
 import androidx.documentfile.provider.DocumentFile
 import com.appforcross.i18n.LocalStrings
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.launch
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import androidx.compose.runtime.rememberCoroutineScope
 
 @Composable
 fun ImportTab(vm: EditorViewModel) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val S = LocalStrings.current
     val exports by vm.exports.collectAsState()
     var thumb: ImageBitmap? by remember { mutableStateOf(null) }
@@ -46,27 +54,35 @@ fun ImportTab(vm: EditorViewModel) {
             }
         }
 
-        val openDoc = rememberLauncherForActivityResult(
-            contract = ActivityResultContracts.OpenDocument(),
-            onResult = { uri ->
-                if (uri != null) {
-                    val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
-                    if (bytes != null) {
-                        val dec = decoder.decode(bytes)
-                        // Конвертация в ImageBitmap для UI и VM
-                        val bmp = Bitmap.createBitmap(dec.width, dec.height, Bitmap.Config.ARGB_8888)
-                        bmp.setPixels(dec.argb, 0, dec.width, 0, 0, dec.width, dec.height)
-                        val img = bmp.asImageBitmap()
-                        val aspect = dec.width.toFloat() / dec.height.coerceAtLeast(1)
-                        // В проекте уже есть метод setSource(ImageBitmap, aspect) — используем его
-                        vm.setSource(img, aspect) // :contentReference[oaicite:4]{index=4}
-                        // Мини‑превью без перерасчёта данных — просто ограничим размер отображения
+    val openDoc = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) {
+            scope.launch {
+                // I/O: читаем байты вне UI
+                val bytes = withContext(Dispatchers.IO) {
+                    context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                }
+                if (bytes != null) {
+                    // CPU: декод ядром (ваш локальный decoder) в фоне
+                    val dec = withContext(Dispatchers.Default) { decoder.decode(bytes) }
+                    val bmp = withContext(Dispatchers.Default) {
+                        Bitmap.createBitmap(dec.width, dec.height, Bitmap.Config.ARGB_8888).apply {
+                            setPixels(dec.argb, 0, dec.width, 0, 0, dec.width, dec.height)
+                        }
+                    }
+                    val img = bmp.asImageBitmap()
+                    val aspect = dec.width.toFloat() / dec.height.coerceAtLeast(1)
+                    // На главном: фиксируем источник и подсказку сцены
+                    withContext(Dispatchers.Main) {
+                        vm.setSource(img, aspect) // ранний hint
                         thumb = img
                         meta = dec.width to dec.height
                     }
                 }
             }
-        )
+        }
+    }
 
     Column(Modifier.fillMaxSize()) {
         Section(S.import.sectionTitle) {
