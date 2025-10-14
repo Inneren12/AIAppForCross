@@ -60,6 +60,76 @@ object BandingMeter {
         return flagged.toFloat() / total
     }
 
+    /**
+     * Локальная карта бэндинга (окна win×win). true там, где:
+     *  – в оригинале локальная вариативность заметна (stdOrig >= thrOrig),
+     *  – в тесте она «сплющена» (stdTest <= thrTest),
+     *  – средние близки (|μ_orig − μ_test| <= thrMean), т.е. нет явного сдвига тона.
+     * Возвращает BooleanArray размера w*h; по границе (половина окна) — false.
+     */
+    fun bandingMask(
+        orig: Bitmap,
+        test: Bitmap,
+        win: Int = 7,
+        thrOrig: Float = 6.0f,   // пороги даны в шкале 0..255 (L ~ яркость)
+        thrTest: Float = 2.0f,
+        thrMean: Float = 3.0f
+    ): BooleanArray {
+        require(orig.width == test.width && orig.height == test.height) {
+            "Size mismatch: orig=${orig.width}x${orig.height}, test=${test.width}x${test.height}"
+        }
+        val w = orig.width; val h = orig.height
+        val oPx = IntArray(w * h); val tPx = IntArray(w * h)
+        orig.getPixels(oPx, 0, w, 0, 0, w, h)
+        test.getPixels(tPx, 0, w, 0, 0, w, h)
+        // Быстрый L (0..255)
+        fun L(p: Int): Int {
+            val r = (p ushr 16) and 0xFF
+            val g = (p ushr 8) and 0xFF
+            val b = p and 0xFF
+            // Rec.709 приблизительно
+            return ((0.2126f*r + 0.7152f*g + 0.0722f*b) + 0.5f).toInt()
+        }
+        val oL = IntArray(w * h) { L(oPx[it]) }
+        val tL = IntArray(w * h) { L(tPx[it]) }
+
+        val mask = BooleanArray(w * h)
+        val r = max(1, win / 2)
+        val area = (2*r + 1) * (2*r + 1)
+        var y = r
+        while (y < h - r) {
+            var x = r
+            while (x < w - r) {
+                var sO = 0; var sO2 = 0
+                var sT = 0; var sT2 = 0
+                var yy = y - r
+                while (yy <= y + r) {
+                    var xx = x - r
+                    val off = yy * w
+                    while (xx <= x + r) {
+                        val io = off + xx
+                        val lo = oL[io]; val lt = tL[io]
+                        sO += lo; sO2 += lo * lo
+                        sT += lt; sT2 += lt * lt
+                        xx++
+                    }
+                    yy++
+                }
+                val mO = sO.toFloat() / area
+                val mT = sT.toFloat() / area
+                val vO = max(0f, sO2 - sO * mO) / area
+                val vT = max(0f, sT2 - sT * mT) / area
+                val stdO = sqrt(vO)
+                val stdT = sqrt(vT)
+                val cond = stdO >= thrOrig && stdT <= thrTest && abs(mO - mT) <= thrMean
+                mask[y * w + x] = cond
+                x++
+            }
+            y++
+        }
+        return mask
+    }
+
     // ---------- internals ----------
 
     /** L* яркость (около 0..100). Для стабильности берём CIELab L*. */

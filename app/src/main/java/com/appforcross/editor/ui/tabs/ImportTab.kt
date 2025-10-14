@@ -194,6 +194,12 @@ fun ImportTab(vm: EditorViewModel) {
             }
 
             Spacer(Modifier.weight(1f))
-            ApplyBar(enabled = false, onApply = { })
+        // Активируем ручной Apply: без авто-тумблера пойдёт через Orchestrator.runManual()
+        ApplyBar(
+            enabled = vm.state.collectAsState().value.sourceImage != null &&
+                    !vm.state.collectAsState().value.isBusy
+        ) {
+            vm.applyImport()
+        }
     }
 }

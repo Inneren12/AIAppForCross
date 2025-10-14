@@ -7,7 +7,7 @@ import com.appforcross.core.palette.Swatch
 import com.appforcross.editor.auto.detect.SmartSceneDetector
 import com.appforcross.editor.auto.discrete.DiscretePipeline
 import com.appforcross.editor.auto.photo.PhotoConfig
-import com.appforcross.editor.auto.photo.PhotoPipeline
+import com.appforcross.editor.photo.hq.PhotoHQ
 
 /**
  * Тонкий use‑case без UI‑зависимостей:
@@ -58,22 +58,29 @@ class AutoProcessor {
             }
 
             SmartSceneDetector.Mode.PHOTO -> {
-                // Включаем дескрин при сильном растре (ровно как раньше в VM)
                 val enableDescreen = decision.features.halftone >= SmartSceneDetector.Options().halftoneGate
-                val res = PhotoPipeline.run(
-                    source = source,
-                    threadPalette = palette,
-                    preset = PhotoConfig.Landscape,
-                    sizes = PhotoConfig.defaultSizes,
-                    enableDescreen = enableDescreen
-                )
+                val t0 = android.os.SystemClock.uptimeMillis()
+                android.util.Log.i("AutoProcessor", "PHOTO2: start Orchestrator.runAuto, palette=${palette.size}, descreen=$enableDescreen")
+                val res = try {
+                    PhotoHQ.runAuto(
+                        source = source,
+                        threadPalette = palette,
+                        preset = PhotoConfig.Landscape,
+                        sizes = PhotoConfig.defaultSizes,
+                        enableDescreen = enableDescreen
+                    )
+                } catch (t: Throwable) {
+                        android.util.Log.e("AutoProcessor", "PHOTO2: orchestrator failed after ${android.os.SystemClock.uptimeMillis()-t0}ms", t)
+                    throw t
+                    }
+                android.util.Log.i("AutoProcessor", "PHOTO2: done in ${android.os.SystemClock.uptimeMillis()-t0}ms, grid=${res.gridWidth}, used=${res.usedSwatches.size}")
                 Output(
                     image = res.image,
                     kind = SmartSceneDetector.Mode.PHOTO,
                     confidence = decision.confidence,
                     scores = decision.scores,
                     toggles = null,
-                    widthStitches = res.gridWidth,            // ширина S, которую подобрал PhotoPipeline
+                    widthStitches = res.gridWidth,            // ширина S, подобранная Orchestrator
                     usedSwatches = res.usedSwatches
                 )
             }

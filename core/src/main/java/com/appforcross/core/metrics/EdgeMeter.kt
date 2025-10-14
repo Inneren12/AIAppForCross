@@ -91,8 +91,107 @@ object EdgeMeter {
         return preserved.toFloat() / edgesOrig
     }
 
+    /** Бинарная маска «сильных» границ с адаптивным порогом. */
+    fun strongEdgeMask(src: Bitmap, k: Float = 1.25f): BooleanArray {
+        val w = src.width
+        val h = src.height
+        if (w < 3 || h < 3) return BooleanArray(w * h)
+        val y = luma(src)
+        val g = sobelGrad(y, w, h)
+        val (m, s) = meanStd(g)
+        val thr = m + k * s
+        val out = BooleanArray(w * h)
+        var i = 0
+        while (i < out.size) {
+            out[i] = g[i] >= thr
+            i++
+        }
+        return out
+    }
+
+    /**+
+     * Поле касательных к границам для анизотропного FS.
+     * Возвращает пару массивов (tx, ty) размера w*h — единичный вектор касательной в каждой точке.
+     * В плоских областях (|∇|≈0) касательная по умолчанию (1,0).
+     */
+    fun tangentField(src: Bitmap): Pair<FloatArray, FloatArray> {
+        val w = src.width
+        val h = src.height
+        val tx = FloatArray(w * h) { 1f }
+        val ty = FloatArray(w * h) { 0f }
+        if (w < 3 || h < 3) return tx to ty
+        val y = luma(src)
+        val invSqrt2 = 0.70710677f
+        for (j in 1 until h - 1) {
+            var idx = j * w + 1
+            for (i in 1 until w - 1) {
+                val jm = j - 1; val jp = j + 1
+                val im = i - 1; val ip = i + 1
+                // Собель-компоненты градиента
+                val a = y[(jm) * w + im]; val b = y[(jm) * w + i];  val c = y[(jm) * w + ip]
+                val d = y[(j ) * w + im]; val e = y[(j ) * w + i];  val f = y[(j ) * w + ip]
+                val g0= y[(jp) * w + im]; val h0 = y[(jp) * w + i]; val k = y[(jp) * w + ip]
+                val gx = (-a - 2f * d - g0 + c + 2f * f + k)
+                val gy = (-a - 2f * b - c + g0 + 2f * h0 + k)
+                val mag = hypot(gx, gy)
+                if (mag > 1e-3f) {
+                    // Касательная к границе = перпендикуляр к градиенту
+                    tx[idx] = (-gy / mag)
+                    ty[idx] = ( gx / mag)
+                } else {
+                        tx[idx] = 1f; ty[idx] = 0f
+                    }
+                idx++
+            }
+        }
+        return tx to ty
+    }
+
+    /**
+    +     * Маска «плоских» зон: |∇L| < thr, где L — яркость 0..1.
+    +     * thr ~ 0.008–0.015 в зависимости от сцены (см. PhotoConfig.B5.FLAT_GRAD_T).
+    +     */
+    fun flatMask(src: Bitmap, thr: Float): BooleanArray {
+        val w = src.width; val h = src.height; val n = w * h
+        val y = lumaF(src) // 0..1
+        val mask = BooleanArray(n)
+        if (w < 3 || h < 3) return mask
+        for (j in 1 until h - 1) {
+            var i = 1
+            val off = j * w
+            while (i < w - 1) {
+                val p = off + i
+                val a = y[p - w - 1]; val b = y[p - w]; val c = y[p - w + 1]
+                val d0= y[p - 1];     val f0= y[p + 1]
+                val g = y[p + w - 1]; val h0= y[p + w]; val k = y[p + w + 1]
+                val gx = (-a - 2f * d0 - g + c + 2f * f0 + k)
+                val gy = (-a - 2f * b  - c + g + 2f * h0 + k)
+                val mag = hypot(gx, gy)
+                mask[p] = mag < thr
+                i++
+            }
+        }
+        return mask
+    }
 
     // ---------------- internals ----------------
+
+    /** Быстрая яркость 0..1 */
+    internal fun lumaF(src: Bitmap): FloatArray {
+        val w = src.width; val h = src.height; val n = w * h
+        val px = IntArray(n); src.getPixels(px, 0, w, 0, 0, w, h)
+        val out = FloatArray(n)
+        var i = 0
+        while (i < n) {
+            val p = px[i]
+            val r = ((p ushr 16) and 0xFF) / 255f
+            val g = ((p ushr 8) and 0xFF) / 255f
+            val b = (p and 0xFF) / 255f
+            out[i] = 0.2126f * r + 0.7152f * g + 0.0722f * b
+            i++
+        }
+        return out
+    }
 
     /** Яркость Y (sRGB): 0..255, одна компонента на пиксель. */
     private fun luma(src: Bitmap): FloatArray {

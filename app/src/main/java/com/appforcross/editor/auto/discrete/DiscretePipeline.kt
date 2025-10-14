@@ -1,4 +1,3 @@
-// app/src/main/java/com/appforcross/editor/auto/discrete/DiscretePipeline.kt
 package com.appforcross.editor.auto.discrete
 
 import android.graphics.Bitmap
@@ -12,16 +11,116 @@ import kotlin.math.*
 
 // ───────────────────────────────────────────────────────────────────────────────
 // DISCRETE V2.5 — Quant-once + ID downscale
-// - ОДНА квантизация исходника к палитре ниток -> ID-карта (индексы 0..K-1).
-// - Для каждого S: быстрый downscale ID-карты (MODE для целых коэффициентов,
-//   drop‑schedule с thin‑guard + phase search для рациональных).
-// - Ранний 2‑уровневый отбор по дешёвым метрикам (EdgeIoU/SSIM proxy, Confetti,
-//   HolesRetained для TEXT). «Тяжёлые» (ΔE95, TinyLoss, Score) считаем только
-//   для 1–2 лучших кандидатов.
-// - Минимум цветов страхуется Color‑Floor, плюс безопасные локальные правки.
-// - Возвращаем минимальный S, прошедший пороги, иначе — лучший по Score.
 // ───────────────────────────────────────────────────────────────────────────────
 object DiscretePipeline {
+
+    private fun thinColumnsMaskIds(ids: IntArray, w: Int, h: Int): BooleanArray {
+        val thin = BooleanArray(w)
+        var y = 0
+        while (y < h) {
+            val row = y * w
+            var x = 0
+            while (x < w) {
+                val c = ids[row + x]
+                val l = if (x > 0) ids[row + x - 1] else c
+                val r = if (x < w - 1) ids[row + x + 1] else c
+                if (c != l && c != r) thin[x] = true
+                x++
+            }
+            y++
+        }
+        return thin
+    }
+
+    private fun thinRowsMaskIds(ids: IntArray, w: Int, h: Int): BooleanArray {
+        val thin = BooleanArray(h)
+        var x = 0
+        while (x < w) {
+            var y = 0
+            while (y < h) {
+                val c = ids[y * w + x]
+                val t = if (y > 0) ids[(y - 1) * w + x] else c
+                val b = if (y < h - 1) ids[(y + 1) * w + x] else c
+                if (c != t && c != b) thin[y] = true
+                y++
+            }
+            x++
+        }
+        return thin
+    }
+
+    /**
+     * Брезенхем‑раскладка отбора пикселей (size→target) с защитой тонких штрихов
+     * и «прибивкой» краёв (edge‑pin). Возвращает массив ИНДЕКСОВ длиной target.
+     */
+    private fun scheduleKeepWithThinGuard(
+        size: Int,
+        target: Int,
+        phase: Int,
+        thin: BooleanArray): IntArray {
+        require(size > 0 && target > 0)
+        val keep = BooleanArray(size)
+        var acc = phase.coerceIn(0, kotlin.math.max(0, size - 1))
+        var count = 0
+        val p = target; val q = size
+        for (i in 0 until size) {
+            acc += p
+            val take = if (acc >= q) { acc -= q; true } else false
+            if (take) { keep[i] = true; count++ }
+        }
+        // thin‑guard
+        var i = 0
+        while (i < size) {
+            if (!keep[i] && thin[i]) {
+                var jL = i - 1; var jR = i + 1; var swapped = false
+                while (jL >= 0 || jR < size) {
+                    if (jL >= 0 && keep[jL] && !thin[jL]) { keep[jL] = false; keep[i] = true; swapped = true; break }
+                    if (jR < size && keep[jR] && !thin[jR]) { keep[jR] = false; keep[i] = true; swapped = true; break }
+                    jL--; jR++
+                }
+                if (!swapped) keep[i] = true
+            }
+            i++
+        }
+        // edge‑pin
+        if (target >= 2) {
+            if (!keep[0]) { keep[0] = true; count++ }
+            if (!keep[size - 1]) { keep[size - 1] = true; count++ }
+        } else {
+            java.util.Arrays.fill(keep, false)
+            keep[size / 2] = true
+            count = 1
+        }
+        // компенсация «перевзятых»
+        var over = count - target
+        if (over > 0) {
+            var idx = 1
+            while (over > 0 && idx < size - 1) { if (keep[idx] && !thin[idx]) { keep[idx] = false; over-- }; idx++ }
+            idx = 1
+            while (over > 0 && idx < size - 1) { if (keep[idx]) { keep[idx] = false; over-- }; idx++ }
+        }
+        // сборка индексов длиной ровно target
+        val out = IntArray(target)
+        var k = 0; var idx = 0
+        while (idx < size && k < target) { if (keep[idx]) { out[k++] = idx }; idx++ }
+        while (k < target) { out[k] = kotlin.math.min(size - 1, if (k > 0) out[k - 1] + 1 else 0); k++ }
+        // ★ Гарантии краёв и монотонности относительно size/target
+        out[0] = 0
+        out[target - 1] = size - 1
+        var prev = 0
+        for (i in 1 until target - 1) {
+            var v = out[i]
+            if (v < prev) v = prev
+            if (v >= size) v = size - 1
+            out[i] = v
+            prev = v
+        }
+        for (i in target - 2 downTo 0) {
+            if (out[i] > out[i + 1]) out[i] = out[i + 1]
+        }
+        return out
+    }
+
 
     // ── Публичные типы ─────────────────────────────────────────────────────────
     data class Config(
@@ -132,6 +231,9 @@ object DiscretePipeline {
             return k.coerceIn(2, 8)
         }
 
+        // Предвычисляем края исходника один раз (для быстрого даунскейла в A)
+        val refEdgesFull = edgeMap(source)
+
         // ── 3) Дешёвый отбор по метрикам на ID‑карте (уровень A) ───────────────
         data class CheapCand(
             val S: Int,
@@ -155,15 +257,13 @@ object DiscretePipeline {
         for (S in candidateSizes) {
             val H = max(1, (source.height * (S.toFloat() / source.width)).roundToInt())
 
-            // BL‑эталон только для краёв (дёшево), больших матем. расходов нет
-            val ref = Bitmap.createScaledBitmap(source, S, H, true)
-            val refEdges = edgeMap(ref)
-
+            // быстрый даунскейл бинарной карты краёв
+            val refEdges = downscaleEdgesFast(refEdgesFull, source.width, source.height, S, H)
             // ↓ быстрый даунскейл ID‑карты с phase‑search (до 4 фаз по осям)
             val idsS = downscaleIdsSmart(idsFull, source.width, source.height, S, H)
 
             // Лёгкие локальные компенсации
-            enforceMinRun2IDs(idsS, S, H)  // убираем 1‑длины
+            enforceMinRun2IDs(idsS, S, H)  // «единицы»
             cullIsolatesToMajorityIDs(idsS, S, H)
 
             // Ранние метрики (дёшево)
@@ -171,9 +271,9 @@ object DiscretePipeline {
             val edge = edgeSSIM(refEdges, qEdges)            // SSIM proxy на бинаре
             val conf = confettiRatioIds(idsS, S, H)
             val holes = if (toggles.text) {
-                // один раз пересобрать картинку для Otsu — это дёшево
+                val refBmp = Bitmap.createScaledBitmap(source, S, H, true)
                 val tmpBmp = idsToBitmap(idsS, S, H, palette)
-                holesRetained(ref, tmpBmp)
+                holesRetained(refBmp, tmpBmp)
             } else null
 
             val passA = edge >= prof.edgeMin && conf <= prof.confMax && (prof.holesMin == null || (holes ?: 1f) >= prof.holesMin)
@@ -193,21 +293,17 @@ object DiscretePipeline {
                 val idx = cheap.indexOf(firstPass)
                 if (idx + 1 in cheap.indices) add(cheap[idx + 1])
             } else {
-                // никто не прошёл — возьмём 1–2 лучших по edge/confetti
+                // никто не прошёл — берём 1 лучшего по edge/confetti (экономим время)
                 add(cheap.maxByOrNull { it.edge - 0.35f * it.confetti } ?: cheap.last())
-                val alt = cheap.sortedByDescending { it.edge - 0.35f * it.confetti }.getOrNull(1)
-                if (alt != null) add(alt)
             }
         }.distinctBy { it.S }.take(2)
-
-        val tB = SystemClock.elapsedRealtimeNanos()
 
         for (c in candidatesForB) {
             val S = c.S; val H = c.H
             val minKeepAuto = if (toggles.text) 2 else estimateDominantColors12(Bitmap.createScaledBitmap(source, S, H, true))
             val minKeep = if (cfg.minKeepColors > 0) cfg.minKeepColors else minKeepAuto
 
-            // Color‑floor: если после упрощений цветов слишком мало — fallback на «блочное большинство»
+            // Color‑floor: если цветов слишком мало — fallback на «блочное большинство»
             val uniq = uniqueIdsCount(c.ids)
             val idsFinal = if (uniq >= minKeep) {
                 c.ids
@@ -256,12 +352,7 @@ object DiscretePipeline {
 
             val passed = reasons.isEmpty() && score >= cfg.targetScore
             val usedSwatches = usedIdx.map { palette[it] }
-
-            Log.i(
-                "DiscretePipeline",
-                "FINAL S=$S usedColors=${usedIdx.size} score=${fmt(score)} pass=$passed edge=${fmt(edge)} dE=${fmt(dE)} conf=${fmt(conf)}"
-            )
-
+            Log.i("DiscretePipeline", "FINAL usedColors=${usedIdx.size} uniqARGB=${uniqueIdsCount(idsFinal)} S=$S")
             finals += Result(
                 image = bmp,
                 gridWidth = S,
@@ -285,7 +376,6 @@ object DiscretePipeline {
         val best = finals.firstOrNull { it.metrics.passed }
             ?: finals.maxByOrNull { it.metrics.score }
             ?: run {
-                // На всякий случай — если «B» не вычислился, возьмём лучший из A
                 val c = cheap.maxByOrNull { it.edge - 0.35f * it.confetti }!!
                 Result(
                     image = idsToBitmap(c.ids, c.W, c.H, palette),
@@ -311,6 +401,61 @@ object DiscretePipeline {
             "TOTAL → ${(SystemClock.elapsedRealtimeNanos() - tAll) / 1e6} ms; chosen S=${best.gridSizeS}, used=${best.usedSwatches.size}"
         )
         return best
+    }
+
+    // Быстрый даунскейл карты краёв. Для рациональных коэффициентов — 3×3 OR вокруг keep‑точки.
+    private fun downscaleEdgesFast(src: BooleanArray, w: Int, h: Int, W: Int, H: Int): BooleanArray {
+        if (w % W == 0 && h % H == 0) {
+            val qx = w / W; val qy = h / H
+            val out = BooleanArray(W * H)
+            var y = 0
+            while (y < H) {
+                var x = 0
+                val y0 = y * qy
+                while (x < W) {
+                    val x0 = x * qx
+                    var any = false
+                    var yy = y0
+                    while (yy < y0 + qy && !any) {
+                        val row = yy * w
+                        var xx = x0
+                        while (xx < x0 + qx) { if (src[row + xx]) { any = true; break }; xx++ }
+                        yy++
+                    }
+                    out[y * W + x] = any
+                    x++
+                }
+                y++
+            }
+            return out
+        }
+        val keepX = scheduleKeepWithThinGuard(W, w, 0, BooleanArray(w))
+        val keepY = scheduleKeepWithThinGuard(H, h, 0, BooleanArray(h))
+        val mapX = IntArray(W) { keepX[it] }
+        val mapY = IntArray(H) { keepY[it] }
+        val out = BooleanArray(W * H)
+        var y = 0
+        while (y < H) {
+            var x = 0
+            val sy = mapY[y]
+            while (x < W) {
+                val sx = mapX[x]
+                var any = false
+                var yy = (sy - 1).coerceAtLeast(0)
+                val y1 = (sy + 1).coerceAtMost(h - 1)
+                while (yy <= y1 && !any) {
+                    val row = yy * w
+                    var xx = (sx - 1).coerceAtLeast(0)
+                    val x1 = (sx + 1).coerceAtMost(w - 1)
+                    while (xx <= x1) { if (src[row + xx]) { any = true; break }; xx++ }
+                    yy++
+                }
+                out[y * W + x] = any
+                x++
+            }
+            y++
+        }
+        return out
     }
 
     // ── Quant‑once: исходник -> ID‑карта палитры ───────────────────────────────
@@ -346,28 +491,27 @@ object DiscretePipeline {
     }
 
     // ── Downscale ID‑карты: MODE (целые) / Drop‑Schedule + phase search (рациональные)
+    // Рациональный даунскейл ID‑карты с phase‑search + thin‑guard + edge‑pin
     private fun downscaleIdsSmart(ids: IntArray, w: Int, h: Int, W: Int, H: Int): IntArray {
         if (w % W == 0 && h % H == 0) {
             val bx = w / W; val by = h / H
             return downscaleIdsBlockMode(ids, w, h, bx, by)
         }
-        // Фаза-поиск до 4*4
-        fun gcd(a0: Int, b0: Int): Int { var a=a0; var b=b0; while (b!=0){ val t=a%b; a=b; b=t }; return abs(a) }
-        val gX = gcd(W, w); val qX = w / gX; val px = min(4, qX)
-        val phasesX = IntArray(px) { (it * qX) / max(1, px) }
-        val gY = gcd(H, h); val qY = h / gY; val py = min(4, qY)
-        val phasesY = IntArray(py) { (it * qY) / max(1, py) }
+        fun gcd(a0: Int, b0: Int): Int { var a=a0; var b=b0; while (b!=0){ val t=a%b; a=b; b=t }; return kotlin.math.abs(a) }
+        val gX = gcd(W, w); val qX = w / gX; val px = kotlin.math.min(4, qX)
+        val phasesX = IntArray(px) { (it * qX) / kotlin.math.max(1, px) }
+        val gY = gcd(H, h); val qY = h / gY; val py = kotlin.math.min(4, qY)
+        val phasesY = IntArray(py) { (it * qY) / kotlin.math.max(1, py) }
 
         val thinCols = thinColumnsMaskIds(ids, w, h)
         val thinRows = thinRowsMaskIds(ids, w, h)
 
         var best: IntArray? = null
         var bestConf = Float.POSITIVE_INFINITY
-
         for (phY in phasesY) {
-            val keepY = scheduleKeepWithThinGuard(H, h, phY, thinRows)
+            val keepY = scheduleKeepWithThinGuard(h, H, 1, BooleanArray(h))
             for (phX in phasesX) {
-                val keepX = scheduleKeepWithThinGuard(W, w, phX, thinCols)
+                val keepX = scheduleKeepWithThinGuard(w, W, 1, BooleanArray(w))
                 val out = downscaleIdsByKeeps(ids, w, h, keepX, keepY)
                 val conf = confettiRatioIds(out, W, H)
                 if (conf < bestConf) { bestConf = conf; best = out }
@@ -385,7 +529,7 @@ object DiscretePipeline {
             var tx = 0
             while (tx < W) {
                 val x0 = tx * bx
-                // Модальный ID цвета в блоке bx×by (очень дёшево)
+                // Модальный ID в блоке bx×by
                 var bestId = -1; var bestCnt = -1
                 val hist = HashMap<Int, Int>(16)
                 var yy = 0
@@ -441,6 +585,40 @@ object DiscretePipeline {
         return out
     }
 
+    // Находит топ‑K цветов по покрытию и «прищёлкивает» редкие к ближайшим по OkLab.
+    private fun limitColorsByCoverageAndDistance(
+        ids: IntArray,
+        swL: FloatArray, swA: FloatArray, swB: FloatArray,
+        maxKeep: Int
+    ): IntArray {
+        val n = ids.size
+        if (n == 0 || maxKeep < 1) return ids
+        val palSize = swL.size
+        val counts = IntArray(palSize)
+        for (id in ids) counts[id]++
+        val used = ArrayList<Int>(palSize)
+        for (i in 0 until palSize) if (counts[i] > 0) used.add(i)
+        if (used.size <= maxKeep) return ids
+        used.sortByDescending { counts[it] }
+        val keep = used.take(maxKeep).toIntArray()
+        val keepSet = keep.toSet()
+        val remap = IntArray(palSize) { it }
+        for (i in used) {
+            if (i in keepSet) continue
+            var best = keep[0]; var bestD = Float.POSITIVE_INFINITY
+            val l = swL[i]; val a = swA[i]; val b = swB[i]
+            for (k in keep) {
+                val dl = l - swL[k]; val da = a - swA[k]; val db = b - swB[k]
+                val d = dl*dl + da*da + db*db
+                if (d < bestD) { bestD = d; best = k }
+            }
+            remap[i] = best
+        }
+        val out = ids.copyOf()
+        for (p in out.indices) out[p] = remap[out[p]]
+        return out
+    }
+
     private fun downscaleIdsByKeeps(src: IntArray, w: Int, h: Int, keepX: IntArray, keepY: IntArray): IntArray {
         val W = keepX.size; val H = keepY.size
         val out = IntArray(W * H)
@@ -450,7 +628,7 @@ object DiscretePipeline {
             var tx = 0
             while (tx < W) {
                 val sx = keepX[tx]
-                // Небольшое «окно большинства» 3×3 вокруг выбранной точки — устойчиво к фазе
+                // Окно большинства 3×3 вокруг выбранной точки
                 var bestId = -1; var bestCnt = -1
                 val x0 = max(0, sx - 1); val x1 = min(w - 1, sx + 1)
                 val y0 = max(0, sy - 1); val y1 = min(h - 1, sy + 1)
@@ -473,72 +651,6 @@ object DiscretePipeline {
             ty++
         }
         return out
-    }
-
-    private fun scheduleKeepWithThinGuard(target: Int, size: Int, phase: Int, thin: BooleanArray): IntArray {
-        val keep = BooleanArray(size)
-        var acc = phase.coerceIn(0, max(0, size - 1))
-        var outCount = 0
-        val p = target; val q = size
-        for (i in 0 until size) {
-            acc += p
-            val take = if (acc >= q) { acc -= q; true } else false
-            if (take) { keep[i] = true; outCount++ }
-        }
-        // thin‑guard: если тонкий пропущен — меняем местами с ближайшим «не‑тонким» взятым
-        var i = 0
-        while (i < size) {
-            if (!keep[i] && thin[i]) {
-                var jL = i - 1; var jR = i + 1; var swapped = false
-                while (jL >= 0 || jR < size) {
-                    if (jL >= 0 && keep[jL] && !thin[jL]) { keep[jL] = false; keep[i] = true; swapped = true; break }
-                    if (jR < size && keep[jR] && !thin[jR]) { keep[jR] = false; keep[i] = true; swapped = true; break }
-                    jL--; jR++
-                }
-                if (!swapped) keep[i] = true
-            }
-            i++
-        }
-        val out = IntArray(target)
-        var k = 0; var idx = 0
-        while (idx < size && k < target) { if (keep[idx]) out[k++] = idx; idx++ }
-        while (k < target) { out[k] = min(size - 1, out[max(0, k - 1)] + 1); k++ }
-        return out
-    }
-
-    private fun thinColumnsMaskIds(ids: IntArray, w: Int, h: Int): BooleanArray {
-        val thin = BooleanArray(w)
-        var y = 0
-        while (y < h) {
-            val row = y * w
-            var x = 0
-            while (x < w) {
-                val c = ids[row + x]
-                val l = if (x > 0) ids[row + x - 1] else c
-                val r = if (x < w - 1) ids[row + x + 1] else c
-                if (c != l && c != r) thin[x] = true
-                x++
-            }
-            y++
-        }
-        return thin
-    }
-
-    private fun thinRowsMaskIds(ids: IntArray, w: Int, h: Int): BooleanArray {
-        val thin = BooleanArray(h)
-        var x = 0
-        while (x < w) {
-            var y = 0
-            while (y < h) {
-                val c = ids[y * w + x]
-                val t = if (y > 0) ids[(y - 1) * w + x] else c
-                val b = if (y < h - 1) ids[(y + 1) * w + x] else c
-                if (c != t && c != b) thin[y] = true
-                y++
-            }
-            x++
-        }
-        return thin
     }
 
     // ── Лёгкие правки на ID‑карте ─────────────────────────────────────────────
@@ -634,6 +746,7 @@ object DiscretePipeline {
     }
 
     private fun idsToBitmap(ids: IntArray, w: Int, h: Int, palette: List<Swatch>): Bitmap {
+        // Принудительно A=0xFF — устраняет «цветовые хвосты» при масштабировании предпросмотра.
         val out = IntArray(w * h)
         var i = 0
         while (i < out.size) {
@@ -657,7 +770,7 @@ object DiscretePipeline {
         return s.size
     }
 
-    // ── Метрики и утилиты ARGB (взято/адаптировано из прежней версии) ─────────
+    // ── Метрики и утилиты ARGB ────────────────────────────────────────────────
     private fun edgeSSIM(a: BooleanArray, b: BooleanArray): Float {
         val n = min(a.size, b.size)
         var muA = 0.0; var muB = 0.0

@@ -135,8 +135,8 @@ fun PreviewTab(vm: EditorViewModel) {
 
         Box(
             Modifier
-            .fillMaxWidth()
-            .weight(1f),
+                .fillMaxWidth()
+                .weight(1f),
         contentAlignment = Alignment.Center
         ) {
             // Размер области предпросмотра в px
@@ -158,6 +158,7 @@ fun PreviewTab(vm: EditorViewModel) {
                 val boxH = boxPx.height.coerceAtLeast(1)
                 val imgW = bmp.width
                 val imgH = bmp.height
+                // Базовый масштаб для "вписать"
                 // Базовый масштаб для "вписать"
                 val fitScale = minOf(boxW.toFloat() / imgW, boxH.toFloat() / imgH)
                 // Габариты слоя без дополнительного зума (масштаб = 1f)
@@ -194,6 +195,7 @@ fun PreviewTab(vm: EditorViewModel) {
                 fun setFit() {
                     scale = 1f; offset = Offset.Zero; fitMode = FitMode.Fit
                 }
+
                 fun setOneToOne() {
                     val s = (1f / fitScale).coerceIn(minScale, maxScale)
                     scale = s
@@ -215,13 +217,13 @@ fun PreviewTab(vm: EditorViewModel) {
                     Modifier
                         .size(drawWd, drawHd)
                     .graphicsLayer {
-                    transformOrigin = TransformOrigin(0f, 0f)
-                    translationX = offset.x
-                    translationY = offset.y
-                    scaleX = scale
-                    scaleY = scale
-                }
-                    // жесты: pinch‑zoom + pan
+                            transformOrigin = TransformOrigin(0f, 0f)
+                            translationX = offset.x
+                            translationY = offset.y
+                            scaleX = scale
+                            scaleY = scale
+                        }
+                        // жесты: pinch‑zoom + pan
                 .pointerInput(bmp, drawW, drawH, fitScale) {
                     detectTransformGestures(panZoomLock = true) { centroid, pan, gestureZoom, _ ->
                         val old = scale
@@ -233,7 +235,7 @@ fun PreviewTab(vm: EditorViewModel) {
                         fitMode = if (abs(ns - 1f) < 0.01f) FitMode.Fit else FitMode.Custom
                     }
                 }
-                    // двойной тап: Fit <-> 100%
+                        // двойной тап: Fit <-> 100%
                 .pointerInput(bmp, fitScale) {
                     detectTapGestures(onDoubleTap = { pos ->
                         val oneToOne = (1f / fitScale).coerceIn(minScale, maxScale)

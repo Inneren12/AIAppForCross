@@ -54,6 +54,7 @@ interface PreviewStrings {
     val promptImport: String
     // zoom controls / HUD
     val zoomFit: String
+    val zoomFill: String
     val zoom100: String
     val zoomIn: String
     val zoomOut: String

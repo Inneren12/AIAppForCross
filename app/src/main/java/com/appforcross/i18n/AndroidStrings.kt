@@ -44,6 +44,7 @@ class AndroidStrings(private val res: Resources) : Strings {
         override val exportPdf = res.getString(R.string.preview_export_pdf)
         override val promptImport = res.getString(R.string.preview_prompt_import)
         override val zoomFit = res.getString(R.string.preview_zoom_fit)
+        override val zoomFill = res.getString(R.string.preview_zoom_fill)
         override val zoom100 = res.getString(R.string.preview_zoom_100)
         override val zoomIn = res.getString(R.string.preview_zoom_in)
         override val zoomOut = res.getString(R.string.preview_zoom_out)
