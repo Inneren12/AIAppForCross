@@ -35,8 +35,9 @@ object PhotoConfig {
         const val ANISO_FS: Boolean = true
         /** Вес вдоль касательной (1.0 = базовый). */
         // анизотропный FS: вдоль края больше, поперёк меньше
-        const val FS_ALONG: Float = 1.00f
-        const val FS_ACROSS: Float = 0.40f
+        const val FS_ALONG = 1.00f
+        const val FS_ACROSS = 0.40f
+        const val FS_RIBBON_RADIUS = 1 // px (1 → лента ~2–3 px)
         /** Учитывать EdgeGuard при слиянии близких цветов. */
         const val PROTECTED_MERGE: Boolean = true
     }
@@ -69,8 +70,9 @@ object PhotoConfig {
 
         // Портрет: skin/order/dark
         // базовая и усиленная амплитуда ORDERED; усиление включаем ТОЛЬКО в окнах риска бэндинга
-        const val ORDERED_AMP_BASE: Float = 0.20f
-        const val ORDERED_AMP_STRONG: Float = 0.25f
+        const val ORDERED_AMP_BASE = 0.20f
+        const val ORDERED_AMP_STRONG = 0.25f
+        const val USE_BLUE_NOISE = true
         const val DARK_L_T: Float = 0.10f
 
         // ===== Sprint ABC: ускорение без потери качества =====

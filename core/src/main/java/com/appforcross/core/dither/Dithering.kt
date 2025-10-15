@@ -22,6 +22,22 @@ private val BAYER_8x8: IntArray = intArrayOf(
 private val BAYER_8x8_NORM: FloatArray by lazy {
     FloatArray(64) { i -> ((BAYER_8x8[i].toFloat() + 0.5f) / 64f) - 0.5f }
 }
+// 8×8 Blue‑Noise threshold map (void-and-cluster), нормированная [-0.5..+0.5]
+private val BLUE_8x8_NORM: FloatArray = floatArrayOf(
+    -0.43f,-0.03f,-0.31f, 0.06f,-0.40f,-0.09f,-0.27f, 0.10f,
+    0.02f,-0.22f, 0.20f,-0.17f, 0.04f,-0.19f, 0.24f,-0.14f,
+    -0.35f, 0.12f,-0.37f,-0.01f,-0.33f, 0.08f,-0.30f, 0.13f,
+    0.16f,-0.11f, 0.27f,-0.07f, 0.18f,-0.05f, 0.30f,-0.02f,
+    -0.39f,-0.10f,-0.28f, 0.09f,-0.41f,-0.08f,-0.26f, 0.11f,
+    0.03f,-0.21f, 0.21f,-0.16f, 0.05f,-0.18f, 0.25f,-0.13f,
+    -0.34f, 0.15f,-0.36f, 0.00f,-0.32f, 0.07f,-0.29f, 0.14f,
+    0.17f,-0.12f, 0.26f,-0.06f, 0.19f,-0.04f, 0.31f,-0.01f
+)
+private fun hash32(x: Int, y: Int): Int {
+    var h = x * 0x9E3779B1.toInt() xor (y * 0x85EBCA6B.toInt())
+    h = h xor (h ushr 16); h *= 0x7FEB352D; h = h xor (h ushr 15); h *= 0x846CA68B.toInt()
+    return h xor (h ushr 16)
+}
 private fun nearestAllowedIndex(l: Float, a: Float, b: Float, allowedLab: FloatArray, metric: Metric): Int {
     var best = 0
     var bestD = Float.POSITIVE_INFINITY
@@ -191,6 +207,58 @@ fun ditherOrdered8x8Tiles(
         ampTiles[ty * wTiles + tx]
     }
     return ditherOrdered8x8Provider(input, allowedLab, allowedArgb, metric, provider, mask)
+}
+
+/**
+ * ORDERED 8×8 по тайлам с выбором карты (Bayer/BlueNoise) и «случайной фазой» на каждый тайл.
+ */
+fun ditherOrdered8x8TilesBN(
+    input: Raster,
+    allowedLab: FloatArray,
+    allowedArgb: IntArray,
+    metric: Metric,
+    ampTiles: FloatArray,
+    wTiles: Int,
+    hTiles: Int,
+    tile: Int = 8,
+    mask: BooleanArray? = null,
+    blueNoise: Boolean = true
+): Raster {
+    require(wTiles * hTiles == ampTiles.size) { "ampTiles size must be wTiles*hTiles" }
+    val w = input.width
+    val h = input.height
+    val lab = argbToOkLab(input.argb)
+    val out = IntArray(input.argb.size)
+    val thresh = if (blueNoise) BLUE_8x8_NORM else BAYER_8x8_NORM
+    var y = 0
+    while (y < h) {
+        val ty = minOf(y / tile, hTiles - 1)
+        val baseY = (y and 7) * 8
+        var x = 0
+        while (x < w) {
+            val tx = minOf(x / tile, wTiles - 1)
+            val phase = hash32(tx, ty)
+            val ox = (phase and 7)
+            val oy = ((phase ushr 3) and 7)
+            val p = y * w + x
+            val use = mask?.get(p) ?: true
+            val amp = if (use) ampTiles[ty * wTiles + tx] else 0f
+            val i3 = p * 3
+            val t = if (amp > 0f) {
+                val rx = ( (x + ox) and 7 )
+                val ry = ( ((y + oy) and 7) * 8 )
+                thresh[ry + rx]
+            } else 0f
+            val L = (lab[i3] + amp * t).coerceIn(0f, 1f)
+            val A = lab[i3 + 1]
+            val B = lab[i3 + 2]
+            val ai = nearestAllowedIndex(L, A, B, allowedLab, metric)
+            out[p] = allowedArgb[ai]
+            x++
+        }
+        y++
+    }
+    return Raster(w, h, out)
 }
 
 /**
