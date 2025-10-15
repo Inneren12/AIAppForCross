@@ -7,6 +7,21 @@ import com.appforcross.core.image.Raster
 
 enum class Dither { NONE, FLOYD_STEINBERG, ATKINSON }
 
+// ===== ORDERED 8×8 constants (file-level) =====
+// Standard Bayer 8×8 (0..63) and normalized [-0.5..+0.5]
+private val BAYER_8x8: IntArray = intArrayOf(
+    0, 48, 12, 60,  3, 51, 15, 63,
+    32, 16, 44, 28, 35, 19, 47, 31,
+    8, 56,  4, 52, 11, 59,  7, 55,
+    40, 24, 36, 20, 43, 27, 39, 23,
+    2, 50, 14, 62,  1, 49, 13, 61,
+    34, 18, 46, 30, 33, 17, 45, 29,
+    10, 58,  6, 54,  9, 57,  5, 53,
+    42, 26, 38, 22, 41, 25, 37, 21
+)
+private val BAYER_8x8_NORM: FloatArray by lazy {
+    FloatArray(64) { i -> ((BAYER_8x8[i].toFloat() + 0.5f) / 64f) - 0.5f }
+}
 private fun nearestAllowedIndex(l: Float, a: Float, b: Float, allowedLab: FloatArray, metric: Metric): Int {
     var best = 0
     var bestD = Float.POSITIVE_INFINITY
@@ -96,6 +111,87 @@ fun dither(input: Raster, allowedLab: FloatArray, allowedArgb: IntArray, metric:
         Dither.ATKINSON -> ditherAtkinson(input, allowedLab, allowedArgb, metric)
     }
 
+
+// ───────────────────────── ORDERED 8×8 (Bayer) ─────────────────────────
+/**
+ * ORDERED 8×8 — константная амплитуда.
+ */
+fun ditherOrdered8x8(
+    input: Raster,
+    allowedLab: FloatArray,
+    allowedArgb: IntArray,
+    metric: Metric,
+    amp: Float,
+    mask: BooleanArray? = null
+): Raster {
+    return ditherOrdered8x8Provider(
+        input, allowedLab, allowedArgb, metric,
+        { _: Int, _: Int -> amp }, // типизированная лямбда
+        mask
+    )
+}
+
+/**
+ * ORDERED 8×8 — амплитуда от провайдера (x,y)→amp.
+ * Шум добавляем только в L-канал OKLab (чтобы не «цвели» блики).
+ */
+fun ditherOrdered8x8Provider(
+    input: Raster,
+    allowedLab: FloatArray,
+    allowedArgb: IntArray,
+    metric: Metric,
+    ampProvider: (Int, Int) -> Float,
+    mask: BooleanArray? = null
+): Raster {
+    val w = input.width
+    val h = input.height
+    val lab = argbToOkLab(input.argb)
+    val out = IntArray(input.argb.size)
+    fun idx3(p: Int): Int = p * 3
+    var y = 0
+    while (y < h) {
+        val ry = (y and 7) * 8
+        var x = 0
+        while (x < w) {
+            val p = y * w + x
+            val i3 = idx3(p)
+            val use = mask?.get(p) ?: true
+            val ampV = if (use) ampProvider(x, y) else 0f
+            val t = if (ampV > 0f) BAYER_8x8_NORM[ry + (x and 7)] else 0f
+            val L = (lab[i3] + ampV * t).coerceIn(0f, 1f)
+            val A = lab[i3 + 1]
+            val B = lab[i3 + 2]
+            val ai = nearestAllowedIndex(L, A, B, allowedLab, metric)
+            out[p] = allowedArgb[ai]
+            x++
+        }
+        y++
+    }
+    return Raster(w, h, out)
+}
+
+/**
+ * ORDERED 8×8 по тайлам (обычно tile=8) с картой амплитуд wTiles×hTiles.
+ */
+fun ditherOrdered8x8Tiles(
+    input: Raster,
+    allowedLab: FloatArray,
+    allowedArgb: IntArray,
+    metric: Metric,
+    ampTiles: FloatArray,
+    wTiles: Int,
+    hTiles: Int,
+    tile: Int = 8,
+    mask: BooleanArray? = null
+): Raster {
+    require(wTiles * hTiles == ampTiles.size) { "ampTiles size must be wTiles*hTiles" }
+    val provider: (Int, Int) -> Float = { x: Int, y: Int ->
+        val tx = kotlin.math.min(x / tile, wTiles - 1)
+        val ty = kotlin.math.min(y / tile, hTiles - 1)
+        ampTiles[ty * wTiles + tx]
+    }
+    return ditherOrdered8x8Provider(input, allowedLab, allowedArgb, metric, provider, mask)
+}
 
 /**
  * Анизотропный Флойда‑Штейнберга: усиливаем распространение ошибки вдоль касательной (tx,ty),

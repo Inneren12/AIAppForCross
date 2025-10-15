@@ -40,12 +40,11 @@ import kotlin.math.pow
 private const val PRE_EDGE_AWARE_BLUR: Boolean = true      // предсглаживание вне сильных краёв
 private const val PRE_BLUR_SIGMA_PX: Float = 0.7f          // ~σ 0.6–0.8
 private const val MAJORITY_CLEAN_ENABLED: Boolean = true   // majority 3×3 перед дизером
-private const val THIN_COMPONENT_MAX: Int = 24             // защищаем «тонкие» структуры (<24px)
-
-// [B5-D] Тон/гамма и нейтрали (можно отключить при необходимости)
+// Максимальный размер «тонкой» компоненты (в пикселях) для guard majority/сглаживания
+private const val THIN_COMPONENT_MAX = 24
 private const val TONE_CURVE_ENABLED: Boolean = true
-private const val TONE_GAMMA_IN: Float = 1.9f        // gamma_in ≈ 1/1.9
-private const val TONE_HIGHLIGHT_COMP: Float = 0.12f // компрессия верхних 12% L*
+private const val TONE_GAMMA_IN: Float = 0.83f        // gamma_in ≈ 1/1.9
+private const val TONE_HIGHLIGHT_COMP: Float = 0.06f // компрессия верхних 12% L*
 private const val NEUTRAL_ANCHORS_ON: Boolean = true
 private const val NEUTRAL_ANCHORS_N: Int = 6         // 5–7 серых уровней
 
@@ -67,6 +66,7 @@ object PhotoHQ {
     // ABC: локальные пороги (без изменения PhotoConfig)
     private const val EARLY_EDGE_SSIM_MIN = 0.70f
     private const val EARLY_BANDING_MAX   = 0.04f
+    private const val EARLY_SSIM_MIN      = 0.66f
     private const val MIN_AFTER_MERGE     = 24  // защита от «схлопывания» палитры
 
     /** Авто: превью‑подбор K/blur/dither → финальный прогон с фиксированными параметрами. */
@@ -141,9 +141,11 @@ object PhotoHQ {
             if (score > bestScore) {
                 bestScore = score; bestS = S; bestImage = imgS; bestUsed = usedS
             }
-            // C: ранний выход — если первый масштаб проходит пороги
-            if (idx == 0 && edge >= EARLY_EDGE_SSIM_MIN && band <= EARLY_BANDING_MAX) {
-                HQLog.s("Early-exit: S=$S (EdgeSSIM≥$EARLY_EDGE_SSIM_MIN, Banding≤$EARLY_BANDING_MAX)")
+            // C: ранний выход — только если хватает и EdgeSSIM, и обычного SSIM
+            if (idx == 0 && edge >= PhotoConfig.B5.EARLY_EDGE_SSIM_MIN &&
+                band <= PhotoConfig.B5.EARLY_BANDING_MAX &&
+                ssim >= PhotoConfig.B5.EARLY_SSIM_MIN) {
+                HQLog.s("Early-exit: S=$S (EdgeSSIM≥${PhotoConfig.B5.EARLY_EDGE_SSIM_MIN}, SSIM≥${PhotoConfig.B5.EARLY_SSIM_MIN}, Banding≤${PhotoConfig.B5.EARLY_BANDING_MAX})")
                 break
             }
         }
@@ -191,6 +193,57 @@ object PhotoHQ {
     }
 
 // ------------------------------ helpers (prev‑рендер кандидатов) ------------------------------
+
+    // Дилатация бинарной маски на r пикселей (для «ленты» вокруг края)
+    private fun dilateMask(src: BooleanArray, w: Int, h: Int, r: Int): BooleanArray {
+        if (r <= 0) return src
+        val out = BooleanArray(src.size)
+        val rr = r * r
+        for (y in 0 until h) for (x in 0 until w) {
+            var hit = false
+            var dy = -r
+            while (!hit && dy <= r) {
+                val yy = y + dy; if (yy !in 0 until h) { dy++; continue }
+                var dx = -r
+                while (!hit && dx <= r) {
+                    val xx = x + dx; if (xx !in 0 until w) { dx++; continue }
+                    if (dx*dx + dy*dy <= rr && src[yy*w + xx]) hit = true
+                    dx++
+                }
+                dy++
+            }
+            out[y*w + x] = hit
+        }
+        return out
+    }
+
+    // Быстрый индикатор риска бэндинга по L* (окно 7×7)
+    private fun bandingMask7(l: FloatArray, w: Int, h: Int,
+                             varThr: Float = 0.0035f, gradThr: Float = 0.010f): BooleanArray {
+        val out = BooleanArray(l.size)
+        val win = 7; val r = win / 2
+        for (y in 0 until h) for (x in 0 until w) {
+            var s = 0f; var s2 = 0f; var cnt = 0; var g = 0f
+            val y0 = (y - r).coerceAtLeast(0); val y1 = (y + r).coerceAtMost(h - 1)
+            val x0 = (x - r).coerceAtLeast(0); val x1 = (x + r).coerceAtMost(w - 1)
+            var yy = y0
+            while (yy <= y1) {
+                val row = yy * w
+                var xx = x0
+                while (xx <= x1) {
+                    val v = l[row + xx]; s += v; s2 += v * v; cnt++
+                    if (xx + 1 <= x1) g = maxOf(g, kotlin.math.abs(l[row + xx + 1] - v))
+                    if (yy + 1 <= y1) g = maxOf(g, kotlin.math.abs(l[(yy + 1) * w + xx] - v))
+                    xx++
+                }
+                yy++
+            }
+            val mean = s / cnt
+            val varL = (s2 / cnt) - mean * mean
+            out[y*w + x] = (varL < varThr && g < gradThr)
+        }
+        return out
+    }
 
     /** Построить превью‑кандидата (квантовать в K ниток палитры и задизерить режимом [mode]). */
     private fun previewCandidate(
@@ -270,36 +323,54 @@ object PhotoHQ {
     ): Pair<IntArray, FloatArray> {
         val srcS = scaleToWidth(source, targetWidthSt)
         val srcForClustering = if (blur > 0f) gauss3x3(srcS) else srcS
-        // База
-        val baseK = kotlin.math.min(14, K.coerceAtLeast(0))
+        // ── RAQ (замороженная палитра на первом S): база + капы по зонам (включая SKIN/GROUND/CLOUD)
+        val wz = ZoneMasks.compute(srcS)
+        val edgeMaskStrong = EdgeMeter.strongEdgeMask(srcS, 1.25f)
+        // 1) База (глобальные центры)
+        val baseK = kotlin.math.min(PhotoConfig.B5.BASE_MIN, K.coerceAtLeast(0))
         val base = if (baseK > 0) buildAllowedFromKMeans(srcForClustering, threadPalette, baseK)
         else (IntArray(0) to FloatArray(0))
-            val rest = (K - baseK).coerceAtLeast(0)
-        // Зональные центры (упрощённо: только растительность/постройки/вода/небо на S0)
-        val wz = ZoneMasks.compute(srcS)
+            // 2) Капы по зонам
+        val rest = (K - baseK).coerceAtLeast(0)
+        val caps = if (rest > 0) {
+            val b = RAQBounds(
+                PhotoConfig.B5.SKY_MIN,   PhotoConfig.B5.SKY_MAX,
+                PhotoConfig.B5.CLOUD_MIN, PhotoConfig.B5.CLOUD_MAX,
+                PhotoConfig.B5.WATER_MIN, PhotoConfig.B5.WATER_MAX,
+                PhotoConfig.B5.VEG_MIN,   PhotoConfig.B5.VEG_MAX,
+                PhotoConfig.B5.GROUND_MIN,PhotoConfig.B5.GROUND_MAX,
+                PhotoConfig.B5.BUILT_MIN, PhotoConfig.B5.BUILT_MAX,
+                PhotoConfig.B5.SKIN_MIN,  PhotoConfig.B5.SKIN_MAX
+            )
+            PaletteAllocator.allocateCaps(wz, edgeMaskStrong, rest, b)
+        } else emptyMap()
+        HQLog.auto("RAQ.before=$K caps=$caps (base=$baseK rest=$rest)")
+        // 3) Зональные центры по капам
         val zoneArgb = ArrayList<Int>()
-        val zoneLab  = ArrayList<Float>()
+        val zoneLab = ArrayList<Float>()
         if (rest > 0) {
-            fun addFrom(mask: FloatArray, k: Int) {
-                if (k <= 0) return
-                val pxS = bitmapToIntArray(srcForClustering)
-                val labS = argbToOkLab(pxS)
+            val pxS = bitmapToIntArray(srcForClustering)
+            val labS = argbToOkLab(pxS)
+            fun addCenters(mask: FloatArray, kZone: Int) {
+                if (kZone <= 0) return
                 val sub = pickLabSubsetByWeight(labS, mask, srcForClustering.width, srcForClustering.height,
                     maxCount = 20000, keepFrac = 0.35f)
                 if (sub.isEmpty()) return
-                val centers = kmeansLab(sub, k, iters = 5, seed = 131)
+                val centers = kmeansLab(sub, kZone, iters = 5, seed = 131)
                 val snapped = snapCentersToThreads(centers, threadPalette)
                 val snappedLab = argbToOkLab(snapped)
                 for (c in snapped) zoneArgb.add(c)
                 var j = 0; while (j < snappedLab.size) { zoneLab.add(snappedLab[j++]) }
             }
-            val perZone = rest / 4
-            addFrom(wz.sky,   perZone)
-            addFrom(wz.water, perZone)
-            addFrom(wz.veg,   perZone)
-            addFrom(wz.built, perZone)
+            addCenters(wz.sky,    caps[Zone.SKY]   ?: 0)
+            addCenters(wz.cloud,  caps[Zone.CLOUD] ?: 0)
+            addCenters(wz.water,  caps[Zone.WATER] ?: 0)
+            addCenters(wz.veg,    caps[Zone.VEG]   ?: 0)
+            addCenters(wz.ground, caps[Zone.GROUND]?: 0)
+            addCenters(wz.built,  caps[Zone.BUILT] ?: 0)
+            addCenters(wz.skin,   caps[Zone.SKIN]  ?: 0)
         }
-        // собрать и защитить
+        // 4) Сборка итогового множества
         var allowedArgb = IntArray(0); var allowedLab = FloatArray(0)
         fun append(argb: IntArray, lab: FloatArray) {
             if (argb.isEmpty()) return
@@ -314,21 +385,35 @@ object PhotoHQ {
         }
         append(base.first, base.second)
         append(zoneArgb.toIntArray(), zoneLab.toFloatArray())
-        // [B5-D] нейтральные якоря (серые L*) — добавим в палитру и в protected
-        val anchors = if (NEUTRAL_ANCHORS_ON) neutralAnchorsARGB(NEUTRAL_ANCHORS_N) else IntArray(0)
-        append(anchors, argbToOkLab(anchors))
-        val prot = (EdgeGuard.protectedColors(Downscale.toMaxSide(source, 512), allowedArgb) + anchors).distinct().toIntArray()
+        // 5) Protected-цвета: нейтральные и skin-якоря
+        val anchorsNeutral = if (NEUTRAL_ANCHORS_ON) neutralAnchorsARGB(NEUTRAL_ANCHORS_N) else IntArray(0)
+        val anchorsSkin = skinAnchorsARGB(srcS, threadPalette, intArrayOf(35, 55, 70, 82))
+        append(anchorsNeutral, argbToOkLab(anchorsNeutral))
+        append(anchorsSkin, argbToOkLab(anchorsSkin))
+        val prot = (EdgeGuard.protectedColors(Downscale.toMaxSide(source, 512), allowedArgb)
+                + anchorsNeutral + anchorsSkin).distinct().toIntArray()
+        val beforeMerge = allowedArgb.size
         val merged = mergeAllowedLab(allowedArgb, allowedLab, PhotoConfig.B2.MERGE_LAB_SQ, prot)
         allowedArgb = merged.first; allowedLab = merged.second
-        if (allowedArgb.size < MIN_AFTER_MERGE) {
-            // если всё же слишком мало — собираем вручную (без operator plus)
-            val zoneArr = zoneArgb.toIntArray()
-            val combA = IntArray(base.first.size + zoneArr.size)
-            System.arraycopy(base.first, 0, combA, 0, base.first.size)
-            System.arraycopy(zoneArr, 0, combA, base.first.size, zoneArr.size)
-            allowedArgb = combA
-            allowedLab  = argbToOkLab(allowedArgb)
+        val afterMerge = allowedArgb.size
+        // 6) Гарантированный минимум после merge — при необходимости добираем по ошибке
+        if (allowedArgb.size < PhotoConfig.B5.MIN_AFTER_MERGE) {
+            val rasterS = Raster(srcS.width, srcS.height, bitmapToIntArray(srcS))
+            val preNoDither = quantNearest(rasterS, allowedLab, allowedArgb)
+            val need = PhotoConfig.B5.MIN_AFTER_MERGE - allowedArgb.size
+            val (argbR, labR) = refillByError(srcS, preNoDither, threadPalette, need)
+            allowedArgb = allowedArgb + argbR
+            allowedLab  = allowedLab  + labR
+            val merged2 = mergeAllowedLab(allowedArgb, allowedLab, PhotoConfig.B2.MERGE_LAB_SQ, prot)
+            allowedArgb = merged2.first; allowedLab = merged2.second
+            HQLog.auto("RAQ.refill: +$need → palette=${allowedArgb.size}")
         }
+        // 7) Логи RAQ
+        val npx = (srcS.width * srcS.height).coerceAtLeast(1)
+        val share = fun(mask: FloatArray) = (mask.sum() / npx).coerceIn(0f,1f)
+        HQLog.auto("RAQ.afterMerge=$afterMerge K0=$beforeMerge → Kfinal=${allowedArgb.size}")
+        HQLog.auto("zonesShare={SKIN=${"%.1f".format(100f*share(wz.skin))}%, SKY=${"%.1f".format(100f*share(wz.sky))}%, WATER=${"%.1f".format(100f*share(wz.water))}%, VEG=${"%.1f".format(100f*share(wz.veg))}%, GROUND=${"%.1f".format(100f*share(wz.ground))}%, BUILT=${"%.1f".format(100f*share(wz.built))}%}")
+        HQLog.auto("protectedKept=${prot.size}")
         HQLog.auto("RAQ(frozen): palette=${allowedArgb.size}")
         return allowedArgb to allowedLab
     }
@@ -343,6 +428,13 @@ object PhotoHQ {
         if (argb.isEmpty()) return argb to lab
         val keep = BooleanArray(argb.size) { true }
         val protSet = protectedArgb?.toHashSet() ?: emptySet()
+        // дельта-порог для skin/нейтралей (чуть жёстче базового)
+        val skinScale = 0.60f
+        val neutralScale = 0.70f
+        val neutralChromaSq = 0.035f * 0.035f
+        val stepGuardMin = 0.015f
+        val stepGuardMax = 0.080f
+        val mergedDistances = ArrayList<Float>(16)
         var i = 0
         while (i < argb.size) {
             if (keep[i]) {
@@ -357,10 +449,25 @@ object PhotoHQ {
                         val dl = lab[jj] - l0
                         val da = lab[jj + 1] - a0
                         val db = lab[jj + 2] - b0
-                        // Не склеиваем, если сильно разная светлота (портреты/небо темнели)
+                        // Анти-перетемнение
                         if (kotlin.math.abs(dl) > 0.06f) { j++; continue }
                         val d2 = dl*dl + da*da + db*db
-                        if (d2 <= thrSq) keep[j] = false
+                        // Определяем тип пары
+                        val isNeutralPair = (a0*a0 + b0*b0) < neutralChromaSq &&
+                                (lab[jj+1]*lab[jj+1] + lab[jj+2]*lab[jj+2]) < neutralChromaSq
+                        val isSkinPair = isSkinArgbColor(argb[i]) && isSkinArgbColor(argb[j])
+                        // Gradient-Guard: для skin/нейтралей не схлопывать «ступени» по L*
+                        val absDl = kotlin.math.abs(dl)
+                        if ((isNeutralPair || isSkinPair) && absDl in stepGuardMin..stepGuardMax) { j++; continue }
+                        val thr2 = when {
+                            isSkinPair    -> thrSq * skinScale
+                            isNeutralPair -> thrSq * neutralScale
+                            else          -> thrSq
+                        }
+                        if (d2 <= thr2) {
+                            keep[j] = false
+                            mergedDistances.add(kotlin.math.sqrt(d2))
+                        }
                     }
                     j++
                 }
@@ -374,7 +481,56 @@ object PhotoHQ {
             val kk = k * 3
             outLab.add(lab[kk]); outLab.add(lab[kk + 1]); outLab.add(lab[kk + 2])
         }
+        if (mergedDistances.isNotEmpty()) {
+            val top = mergedDistances.sorted().take(6).joinToString(prefix="[", postfix="]") { "%.3f".format(it) }
+            HQLog.auto("topMergePairsΔ≈ $top")
+        }
         return outArgb.toIntArray() to outLab.toFloatArray()
+    }
+
+    /** Быстрые skin-якоря: берём средний оттенок кожи и фиксируем 3–4 уровня L*. */
+    private fun skinAnchorsARGB(src: Bitmap, threads: List<Swatch>, levelsL: IntArray): IntArray {
+        val mask = skinMaskYCbCr(src)
+        val w = src.width; val h = src.height; val n = w*h
+        val px = IntArray(n); src.getPixels(px,0,w,0,0,w,h)
+        var sr = 0; var sg = 0; var sb = 0; var cnt = 0
+        var i = 0
+        while (i < n) {
+            if (mask[i]) {
+                val p = px[i]
+                sr += (p ushr 16) and 0xFF
+                sg += (p ushr 8) and 0xFF
+                sb += p and 0xFF
+                cnt++
+            }
+            i++
+        }
+        if (cnt == 0) return IntArray(0)
+        val r = (sr / cnt).coerceIn(0,255)
+        val g = (sg / cnt).coerceIn(0,255)
+        val b = (sb / cnt).coerceIn(0,255)
+        val baseLab = argbToOkLab(intArrayOf((0xFF shl 24) or (r shl 16) or (g shl 8) or b))
+        val a0 = baseLab[1] * 0.65f // слегка уменьшаем насыщенность
+        val b0 = baseLab[2] * 0.65f
+        val centers = FloatArray(levelsL.size * 3)
+        var c = 0
+        for (L8 in levelsL) {
+            val L = (L8 / 100f).coerceIn(0.0f, 1.0f)
+            centers[c] = L; centers[c+1] = a0; centers[c+2] = b0
+            c += 3
+        }
+        return snapCentersToThreads(centers, threads)
+    }
+
+    /** Heuristic: skin check in YCbCr (single color). */
+    private fun isSkinArgbColor(c: Int): Boolean {
+        val r = (c ushr 16) and 0xFF
+        val g = (c ushr 8) and 0xFF
+        val b = c and 0xFF
+        val y  =  0.299f * r + 0.587f * g + 0.114f * b
+        val cb = -0.1687f * r - 0.3313f * g + 0.5f   * b + 128f
+        val cr =  0.5f   * r - 0.4187f * g - 0.0813f * b + 128f
+        return (y > 70f && cb in 85f..135f && cr in 133f..180f)
     }
 
     /**
@@ -529,7 +685,7 @@ object PhotoHQ {
         } else IntArray(0) to FloatArray(0)
         // RAQ по зонам (остаток после базы)
         val rest = (K - baseK).coerceAtLeast(0)
-        val caps = if (rest > 0) {
+        var caps = if (rest > 0) {
             val b = RAQBounds(
                 PhotoConfig.B5.SKY_MIN,   PhotoConfig.B5.SKY_MAX,
                 PhotoConfig.B5.CLOUD_MIN, PhotoConfig.B5.CLOUD_MAX,
@@ -541,6 +697,47 @@ object PhotoHQ {
             )
             PaletteAllocator.allocateCaps(wz, edgeMaskStrong, rest, b)
         } else emptyMap()
+        // ── Жёсткая гарантия min для кожи/тёмного фона; избыток снимаем с «менее критичных» зон
+        if (rest > 0) {
+            val fixed = caps.toMutableMap()
+            fun maxTo(key: Zone, minVal: Int) { fixed[key] = kotlin.math.max(fixed[key] ?: 0, minVal) }
+            maxTo(Zone.SKIN,   PhotoConfig.B5.SKIN_MIN)
+            maxTo(Zone.GROUND, PhotoConfig.B5.GROUND_MIN)
+            var sum = fixed.values.sum()
+            if (sum > rest) {
+                var overflow = sum - rest
+                // порядок отдачи: BUILT → VEG → WATER → SKY → CLOUD
+                val donors = arrayOf(Zone.BUILT, Zone.VEG, Zone.WATER, Zone.SKY, Zone.CLOUD)
+                for (z in donors) {
+                    if (overflow <= 0) break
+                    val cur = (fixed[z] ?: 0)
+                    val dec = kotlin.math.min(cur, overflow)
+                    fixed[z] = cur - dec
+                    overflow -= dec
+                }
+            }
+            caps = fixed
+        }
+        // Жёсткая гарантия min для SKIN/GROUND, лишнее снимаем с второстепенных зон
+        if (rest > 0) {
+            val fixed = caps.toMutableMap()
+            fun raise(z: Zone, minVal: Int) { fixed[z] = maxOf(fixed[z] ?: 0, minVal) }
+            raise(Zone.SKIN,   PhotoConfig.B5.SKIN_MIN)
+            raise(Zone.GROUND, PhotoConfig.B5.GROUND_MIN)
+            var sum = fixed.values.sum()
+            if (sum > rest) {
+                var over = sum - rest
+                val donors = arrayOf(Zone.BUILT, Zone.VEG, Zone.WATER, Zone.SKY, Zone.CLOUD)
+                for (z in donors) {
+                    if (over <= 0) break
+                    val cur = fixed[z] ?: 0
+                    val dec = minOf(cur, over)
+                    fixed[z] = cur - dec
+                    over -= dec
+                }
+            }
+            caps = fixed
+        }
         HQLog.auto("RAQ: base=$baseK rest=$rest caps=$caps")
 
         // Зональные центры
@@ -743,6 +940,8 @@ object PhotoHQ {
         // «Сильные» края (по модулю градиента): берём как !flatMask(τ=0.06)
         val nonStrong = EdgeMeter.flatMask(srcS, 0.06f)
         val strongEdge = BooleanArray(n) { !nonStrong[it] }
+        // Узкая «лента» вокруг сильных краёв (FS только здесь)
+        val edgeRibbon = dilateMask(strongEdge, srcS.width, srcS.height, r = 1)
 
         // [B5-D] 0a) Тон/гамма: мягкая S-кривая по L* перед квантованием
         if (TONE_CURVE_ENABLED) {
@@ -786,10 +985,12 @@ object PhotoHQ {
             }
         }
 
+        // ORDERED 8x8: base=0.20, strong=+0.05 (cap 0.26); тёмный фон → OFF
         // 1) Гибридный дизеринг
-        // ORDERED 8x8: база и усиленный для banding‑окон (cap 0.28); тёмный фон → OFF
-        val AMP_BASE = 0.24f
-        val AMP_STRONG = kotlin.math.min(AMP_BASE + 0.05f, 0.28f)
+        // ORDERED 8×8: базовая и усиленная амплитуда; усиливаем только в окнах риска бэндинга
+        val AMP_BASE   = PhotoConfig.B5.ORDERED_AMP_BASE
+        val AMP_STRONG = PhotoConfig.B5.ORDERED_AMP_STRONG
+
         val orderedBase = ditherOrderedBayer8(rasterS, paletteLab, paletteArgb, amp = AMP_BASE, metric = Metric.OKLAB)
         val orderedStrong = ditherOrderedBayer8(rasterS, paletteLab, paletteArgb, amp = AMP_STRONG, metric = Metric.OKLAB)
         // FS‑анизотропный по краю: вдоль 1.0, поперёк 0.40
@@ -851,10 +1052,32 @@ object PhotoHQ {
             "dither.stats: FS=${"%.1f".format(fsPct)}%, ORD=${"%.1f".format(ordPct)}%, OFF=${"%.1f".format(offPct)}% " +
                     "(skin: FS=$skinFS, ORD=$skinORD, OFF=$skinOFF; bg: FS=$bgFS, ORD=$bgORD, OFF=$bgOFF)"
         )
+
+        // Пост-чистка одиночек ПОСЛЕ смешивания: scope = skin ∪ flat, guard = strongEdge
+        if (PhotoConfig.B5.CLEAN_SINGLETONS) {
+            val flatMask = EdgeMeter.flatMask(srcS, PhotoConfig.B5.FLAT_GRAD_T)
+            val scope = BooleanArray(n) { i -> skinMaskLocal[i] || flatMask[i] }
+            cleanSingletonsMajority1(
+                out, srcS.width, srcS.height,
+                protect = strongEdge,
+                scopeFlat = scope
+            )
+            HQLog.s("post.clean: majority1 applied (skin∪flat)")
+        }
         HQLog.s(
             "orderedAmp: mean=${"%.3f".format(meanAmp)}, p95=${"%.3f".format(p95Amp)}; fsAniso: along=1.00, across=0.40"
         )
-
+        // Пост-чистка одиночек ПОСЛЕ смешивания (skin ∪ flat, вне сильных краёв)
+        if (PhotoConfig.B5.CLEAN_SINGLETONS) {
+            val flatMask = EdgeMeter.flatMask(srcS, PhotoConfig.B5.FLAT_GRAD_T)
+            val scope = BooleanArray(n) { i -> skinMaskLocal[i] || flatMask[i] }
+            cleanSingletonsMajority1(
+                out, srcS.width, srcS.height,
+                protect = strongEdge,
+                scopeFlat = scope
+            )
+            HQLog.s("post.clean: majority1 applied (skin∪flat)")
+        }
         val bmp = intArrayToBitmap(out, srcS.width, srcS.height)
         val used = collectUsedSwatches(threadPalette, out)
         return bmp to used

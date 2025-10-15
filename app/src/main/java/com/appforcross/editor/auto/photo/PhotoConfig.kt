@@ -35,8 +35,8 @@ object PhotoConfig {
         const val ANISO_FS: Boolean = true
         /** Вес вдоль касательной (1.0 = базовый). */
         // анизотропный FS: вдоль края больше, поперёк меньше
-        const val FS_ALONG: Float = 1.10f
-        const val FS_ACROSS: Float = 0.30f
+        const val FS_ALONG: Float = 1.00f
+        const val FS_ACROSS: Float = 0.40f
         /** Учитывать EdgeGuard при слиянии близких цветов. */
         const val PROTECTED_MERGE: Boolean = true
     }
@@ -45,7 +45,7 @@ object PhotoConfig {
     object B5 {
         // База (общие нейтрали) + зональные лимиты (в т.ч. SKIN)
         const val BASE_MIN: Int = 14
-        const val SKIN_MIN: Int = 10; const val SKIN_MAX: Int = 14
+        const val SKIN_MIN: Int = 12; const val SKIN_MAX: Int = 16
         const val SKY_MIN: Int = 3;   const val SKY_MAX: Int = 12
         const val CLOUD_MIN: Int = 3; const val CLOUD_MAX: Int = 10
         const val WATER_MIN: Int = 3; const val WATER_MAX: Int = 12
@@ -68,7 +68,9 @@ object PhotoConfig {
         const val CLEAN_SINGLETONS: Boolean = true
 
         // Портрет: skin/order/dark
-        const val SKIN_ORDERED_AMP: Float = 0.24f
+        // базовая и усиленная амплитуда ORDERED; усиление включаем ТОЛЬКО в окнах риска бэндинга
+        const val ORDERED_AMP_BASE: Float = 0.20f
+        const val ORDERED_AMP_STRONG: Float = 0.25f
         const val DARK_L_T: Float = 0.10f
 
         // ===== Sprint ABC: ускорение без потери качества =====
@@ -87,6 +89,8 @@ object PhotoConfig {
         const val EARLY_EXIT_S: Boolean = true
         const val EARLY_EDGE_SSIM_MIN: Float = 0.70f
         const val EARLY_BANDING_MAX:   Float = 0.04f
+        // дополнительный фильтр раннего выхода: не выходим при низком обычном SSIM
+        const val EARLY_SSIM_MIN:      Float = 0.66f
 
         // Минимально допустимое число цветов после merge для фото (QA-гарантия)
         const val MIN_AFTER_MERGE: Int = 24
