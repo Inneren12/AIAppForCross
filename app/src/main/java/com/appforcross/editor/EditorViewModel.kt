@@ -16,17 +16,11 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import androidx.compose.ui.graphics.ImageBitmap
 import com.appforcross.core.palette.PaletteMeta
-import com.appforcross.editor.auto.detect.SmartSceneDetector
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlin.math.cbrt
+import kotlin.math.max
 import kotlin.math.min
-import kotlinx.coroutines.Job
-import com.appforcross.editor.auto.AutoProcessor
-import com.appforcross.editor.util.Perf
-import android.util.Log
-import com.appforcross.editor.auto.photo.PhotoConfig
-import com.appforcross.core.palette.Swatch
-import com.appforcross.editor.photo.hq.PhotoHQ
 
 class EditorViewModel(private val engine: EditorEngine) : ViewModel() {
 
@@ -53,9 +47,6 @@ private data class PipelineSnapshot(
     private val _canRedo = MutableStateFlow(false)
     val canUndo = _canUndo.asStateFlow()
     val canRedo = _canRedo.asStateFlow()
-    private var autoJob: Job? = null
-    // Тонкий интерактор без UI-зависимостей — единая точка авто‑обработки
-    private val autoProcessor = AutoProcessor()
     private fun updateHistoryFlags() {
         _canUndo.value = cursor > 0
         _canRedo.value = cursor >= 0 && cursor < history.size - 1
@@ -124,30 +115,6 @@ private data class PipelineSnapshot(
     fun setPaletteRepository(repo: com.appforcross.core.palette.PaletteRepository) {
         paletteRepository = repo
     }
-
-    // ── Авто‑распознавание при импорте и подсказка типа сцены (до обработки)
-    private val _autoDetectOnImport = MutableStateFlow(true)
-    val autoDetectOnImport = _autoDetectOnImport.asStateFlow()
-    fun setAutoDetectOnImport(v: Boolean) { _autoDetectOnImport.value = v }
-
-    // Авто-обработка после импорта (V2/V1)
-    private val _autoProcessOnImport = MutableStateFlow(true)
-    val autoProcessOnImport = _autoProcessOnImport.asStateFlow()
-    fun setAutoProcessOnImport(v: Boolean) { _autoProcessOnImport.value = v }
-
-    data class ImportSceneHint(
-        val kind: String,
-        val confidence: Float,
-        val top3: List<Pair<String, Float>>,
-        val widthStitches: Int? = null,
-        val colorsSelected: Int? = null
-    )
-    private val _importSceneHint = MutableStateFlow<ImportSceneHint?>(null)
-    val importSceneHint = _importSceneHint.asStateFlow()
-    // ── Короткая сводка для Import: ширина в стежках (S) и число цветов (K)
-    data class AutoSummary(val widthSt: Int, val colors: Int)
-    private val _autoSummary = MutableStateFlow<AutoSummary?>(null)
-    val autoSummary: kotlinx.coroutines.flow.StateFlow<AutoSummary?> = _autoSummary.asStateFlow()
 
     // Активная палитра — реактивно (StateFlow), без изменения EditorState
     private val _activePaletteId = MutableStateFlow("")
@@ -322,27 +289,6 @@ private data class PipelineSnapshot(
         _state.value = _state.value.copy(sourceImage = image, previewImage = image, aspect = aspect)
         // начальная точка истории
         pushSnapshot(_state.value)
-        // После импорта — либо полный авто‑прогон, либо только быстрый hint
-        if (_autoProcessOnImport.value) {
-            viewModelScope.launch {
-                runCatching { runAutoOnImportIfNeeded(image.asAndroidBitmap()) }
-                    .onFailure {
-                        _state.value = _state.value.copy(isBusy = false, error = it.message)
-                        android.util.Log.w("EditorVM", "auto process after import failed", it)
-                    }
-            }
-        } else if (_autoDetectOnImport.value) {
-            viewModelScope.launch {
-                runCatching { detectSceneForImport() }
-                    .onFailure {
-                        _state.value = _state.value.copy(error = it.message)
-                        android.util.Log.w("EditorVM", "detectSceneForImport() failed", it)
-                    }
-            }
-        } else {
-            _importSceneHint.value = null
-            _autoSummary.value = null
-        }
     }
 
     fun updatePreprocess(transform: (PreprocessState) -> PreprocessState) {
@@ -358,81 +304,6 @@ private data class PipelineSnapshot(
         val next = st.copy(previewImage = out)
         pushSnapshot(next)
         next
-    }
-
-    // Считаем «нитки» строго по фактически использованным swatch’ам результата.
-    // EditorViewModel.kt
-    private fun computeThreadsFromUsed(out: AutoProcessor.Output): List<ThreadItem> {
-        val bmp = out.image.asImageBitmap()
-        val ab = bmp.asAndroidBitmap()
-        val w = ab.width
-        val h = ab.height
-        val total = (w * h).coerceAtLeast(1)
-        val px = IntArray(total)
-        ab.getPixels(px, 0, w, 0, 0, w, h)
-
-        // База только из фактически использованных конвейером swatch’ей;
-        // фоллбек — ТОЛЬКО если список пуст.
-        val baseline =
-            if (out.usedSwatches.isNotEmpty()) out.usedSwatches else getActivePaletteSwatches()
-        android.util.Log.d(
-            "EditorVM.Threads",
-            "computeThreadsFromUsed: baseline=${baseline.size}, img=${w}x${h}"
-        )
-        if (baseline.isEmpty()) return emptyList()
-
-        // Быстрый доступ: ARGB -> индекс swatch в baseline
-        val argbToIdx = HashMap<Int, Int>(baseline.size * 2)
-        baseline.forEachIndexed { i, sw -> argbToIdx[sw.argb or (0xFF shl 24)] = i }
-
-        // Подсчитать, к какому из baseline ближе каждый пиксель (точное совпадение -> ближайший)
-        val counts = IntArray(baseline.size)
-        var idx = 0
-        while (idx < total) {
-            val c = px[idx] or (0xFF shl 24)
-            val j = argbToIdx[c]
-            if (j != null) {
-                counts[j]++
-            } else {
-                // ближайший по RGB среди baseline
-                val r = (c shr 16) and 0xFF
-                val g = (c shr 8) and 0xFF
-                val b = c and 0xFF
-                var best = 0
-                var bestD = Int.MAX_VALUE
-                var k = 0
-                while (k < baseline.size) {
-                    val a = baseline[k].argb
-                    val dr = r - ((a shr 16) and 0xFF)
-                    val dg = g - ((a shr 8) and 0xFF)
-                    val db = b - (a and 0xFF)
-                    val d = dr * dr + dg * dg + db * db
-                    if (d < bestD) {
-                        bestD = d; best = k
-                    }
-                    k++
-                }
-                counts[best]++
-            }
-            idx++
-        }
-
-        // Сформировать список по baseline, убрать нули, отсортировать
-        val result = baseline.mapIndexed { bi, sw ->
-            val cnt = counts[bi]
-            ThreadItem(
-                code = sw.code,
-                name = sw.name,
-                argb = sw.argb,
-                percent = if (total > 0) (cnt * 100) / total else 0,
-                count = cnt
-            )
-        }.filter { it.count > 0 }.sortedByDescending { it.count }
-        android.util.Log.d(
-            "EditorVM.Threads",
-            "Result[${result.size}]: " + result.joinToString { "${it.code}:${it.percent}%(${it.count})" }
-        )
-        return result
     }
 
     fun updateSize(transform: (SizeState) -> SizeState) {
@@ -479,195 +350,55 @@ private data class PipelineSnapshot(
         _state.value = _state.value.copy(palette = transform(_state.value.palette))
     }
 
-    fun applyImport() {
-        val src = state.value.sourceImage ?: return
-        // Если авто‑тумблер активен — повторяем автопроцесс (как после импорта)
-        if (autoProcessOnImport.value) {
-            android.util.Log.i("Import.Apply", "autoProcess=ON → runAutoOnImportIfNeeded()")
-            runAutoOnImportIfNeeded(src.asAndroidBitmap())
-            return
-        }
-
-        // Иначе — ручной прогон по активным параметрам вкладок
-        viewModelScope.launch {
-            _state.value = _state.value.copy(isBusy = true, error = null)
-            try {
-                val st0 = state.value
-
-                // 1) Preprocess
-                val pre = withContext(Dispatchers.Default) {
-                    engine.applyPreprocess(src, st0.preprocess)
-                }
-                appliedPreprocess = pre
-
-                // 2) Size (учитываем keepAspect + режим выбора)
-                val ab = pre.asAndroidBitmap()
-                val aspect = if (st0.aspect > 0f) st0.aspect
-                else (ab.width.toFloat() / ab.height.coerceAtLeast(1))
-                var w = st0.size.widthStitches.coerceAtLeast(1)
-                var h = st0.size.heightStitches.coerceAtLeast(1)
-                when (st0.size.pick) {
-                    SizePick.BY_WIDTH  -> if (st0.size.keepAspect) h = ((w / aspect) + 0.5f).toInt().coerceAtLeast(1)
-                    SizePick.BY_HEIGHT -> if (st0.size.keepAspect) w = ((h * aspect) + 0.5f).toInt().coerceAtLeast(1)
-                    SizePick.BY_DPI    -> if (st0.size.keepAspect) h = ((w / aspect) + 0.5f).toInt().coerceAtLeast(1)
-                }
-                val sizedBitmap = withContext(Dispatchers.Default) {
-                    android.graphics.Bitmap.createScaledBitmap(ab, w, h, true)
-                }
-                val sized = sizedBitmap.asImageBitmap()
-                appliedSize = sized
-
-                // 3) Palette/Quantize — ВРУЧНУЮ через Orchestrator (без SmartScene/Auto)
-                val palette = getActivePaletteSwatches()
-                val uiMaxK = st0.palette.maxColors
-                val preset0 = PhotoConfig.Landscape
-                val preset = if (uiMaxK > 0)
-                    preset0.copy(kMin = minOf(preset0.kMin, uiMaxK), kMax = uiMaxK)
-                else preset0
-                val forceDither: PhotoConfig.DitherMode? = when (st0.palette.dithering) {
-                            DitheringType.NONE -> PhotoConfig.DitherMode.NONE
-                            DitheringType.FLOYD_STEINBERG -> PhotoConfig.DitherMode.FS
-                            DitheringType.ATKINSON -> PhotoConfig.DitherMode.FS
-                            else -> null
-                        }
-                android.util.Log.i("Import.Apply",
-                    "manual pipeline: Orchestrator.runManual, size=${w}x${h}, K<=${if (uiMaxK>0) uiMaxK else "∞"}, dither=$forceDither, activePalette=${palette.size}")
-                val res = withContext(Dispatchers.Default) {
-                    PhotoHQ.runManual(
-                        source = sizedBitmap,
-                        threadPalette = palette,
-                        preset = preset,
-                        targetS = w,
-                        enableDescreen = false,
-                        forceDitherMode = forceDither
-                    )
-                }
-                appliedPalette = res.image.asImageBitmap()
-
-                // Нитки и символы — строго по реально использованным swatch’ам
-                val threads = withContext(Dispatchers.Default) {
-                    computeThreadsFromGridAndSwatches(appliedPalette!!, res.usedSwatches)
-                }
-                _threads.value = threads
-                autoAssignSymbolsForThreads(threads)
-                commitSymbolsForPreview()
-
-                // Краткая сводка/hint (без повторного SmartScene)
-                _autoSummary.value = AutoSummary(widthSt = res.gridWidth, colors = res.usedSwatches.size)
-                _importSceneHint.value = _importSceneHint.value?.copy(
-                    widthStitches = res.gridWidth,
-                    colorsSelected = res.usedSwatches.size
-                )
-
-                // 4) Options (пост‑обработка)
-                val final = withContext(Dispatchers.Default) {
-                    engine.applyOptions(appliedPalette!!, st0.options, st0.palette.metric)
-                }
-                appliedOptions = final
-
-                val next = _state.value.copy(previewImage = final)
-                pushSnapshot(next)
-                _state.value = next.copy(isBusy = false)
-            } catch (t: Throwable) {
-                _state.value = _state.value.copy(isBusy = false, error = t.message)
-                android.util.Log.w("Import.Apply", "manual pipeline failed", t)
-            }
-        }
-    }
-
     fun applyPaletteKMeans() = runStage { st ->
-        val base = appliedSize ?: appliedPreprocess ?: appliedImport ?: st.sourceImage ?: return@runStage st
-        val bmp = base.asAndroidBitmap()
-        val threadsPalette = getActivePaletteSwatches()
-
-        // 1) Параметры из вкладки «Палитра»
-        val uiMaxK = st.palette.maxColors
-        val preset0 = PhotoConfig.Landscape
-        val preset = if (uiMaxK > 0)
-            preset0.copy(kMin = minOf(preset0.kMin, uiMaxK), kMax = uiMaxK)
-        else
-            preset0
-
-        // Проброс принудительного типа дизеринга (Atkinson -> FS как временный маппинг)
-        val forceDither: PhotoConfig.DitherMode? = when (st.palette.dithering) {
-            DitheringType.NONE -> PhotoConfig.DitherMode.NONE
-            DitheringType.FLOYD_STEINBERG -> PhotoConfig.DitherMode.FS
-            DitheringType.ATKINSON -> PhotoConfig.DitherMode.FS
-            else -> null
+        // База для Palette: Size.applied -> Preprocess.applied -> Import.applied
+        var base = appliedSize ?: appliedPreprocess ?: appliedImport ?: st.sourceImage ?: return@runStage st
+        // (опц.) лёгкое подчёркивание контуров перед квантованием
+        if (_edgeEnhance.value) {
+            base = edgePrefilterUnsharp(base, amount = 0.6f)
         }
-
-        val targetS = bmp.width
-        android.util.Log.i("EditorVM.PhotoHQ",
-            "applyPaletteKMeans: Orchestrator.runManual, pal=${threadsPalette.size}, K<=${if (uiMaxK>0) uiMaxK else "∞"}, S=$targetS, dither=$forceDither")
-        val res = PhotoHQ.runManual(
-            source = bmp,
-            threadPalette = threadsPalette,
-            preset = preset,
-            targetS = targetS,
-            enableDescreen = false,
-            forceDitherMode = forceDither
+        val p = st.palette
+        android.util.Log.d(
+            "Quant",
+            "engine=" + engine::class.java.simpleName +
+                    " K=" + p.maxColors +
+                    " dith=" + p.dithering +
+                    " metric=" + p.metric
         )
-        android.util.Log.i("EditorVM.PhotoHQ", "applyPaletteKMeans: done (Orchestrator), S=${res.gridWidth}, used=${res.usedSwatches.size}")
+        val out =
+            if (p.maxColors > 0) engine.kMeansQuantize(base, p.maxColors, p.metric, p.dithering)
+            else base
 
-        // 2) Статистика ниток строго по реально использованным swatch’ам
-        val outImg = res.image.asImageBitmap()
-        val threads = computeThreadsFromGridAndSwatches(outImg, res.usedSwatches)
+        // После квантования считаем статистику ниток по активной палитре
+        val limit = (if (p.maxColors > 0) p.maxColors else 32).coerceAtLeast(1)
+        val palId = getActivePaletteId()
+        val threads = computeThreadStatsAgainstPalette(out, limit, palId)
         _threads.value = threads
+// Автоприсвоение символов для новых цветов (существующие не затираем)
         autoAssignSymbolsForThreads(threads)
-        commitSymbolsForPreview()
 
-        // 3) Публикация
-        appliedPalette = outImg
+
+        fun equalPixels(a: ImageBitmap, b: ImageBitmap): Boolean {
+            val ab = a.asAndroidBitmap(); val bb = b.asAndroidBitmap()
+            if (ab.width != bb.width || ab.height != bb.height) return false
+            val n = ab.width * ab.height
+            val pa = IntArray(n); val pb = IntArray(n)
+            ab.getPixels(pa, 0, ab.width, 0, 0, ab.width, ab.height)
+            bb.getPixels(pb, 0, bb.width, 0, 0, bb.width, bb.height)
+            return pa.contentEquals(pb)
+        }
+        android.util.Log.d("Quant", "pixelsEqual=" + equalPixels(st.previewImage ?: st.sourceImage!!, out))
+
+        val before = uniqueColors(st.previewImage ?: st.sourceImage!!)
+        val after  = uniqueColors(out)
+        android.util.Log.d("Quant", "before=" + before + " after=" + after)
+        // фиксируем стадию + инвалидируем последующие
+        appliedPalette = out
         dirtyOptions = true
-        _autoSummary.value = AutoSummary(widthSt = res.gridWidth, colors = res.usedSwatches.size)
-        _importSceneHint.value = _importSceneHint.value?.copy(
-            widthStitches = res.gridWidth,
-            colorsSelected = res.usedSwatches.size
-        )
-        val next = st.copy(previewImage = appliedPalette)
+        val next = st.copy(previewImage = out)
         pushSnapshot(next)
         next
-    }
-
-    // Подсчёт ниток по фактическому гриду и использованным swatch’ам (без AutoProcessor)
-    private fun computeThreadsFromGridAndSwatches(
-        img: ImageBitmap,
-        used: List<com.appforcross.core.palette.Swatch>
-    ): List<ThreadItem> {
-        val ab = img.asAndroidBitmap()
-        val w = ab.width; val h = ab.height; val total = (w * h).coerceAtLeast(1)
-        val px = IntArray(total); ab.getPixels(px, 0, w, 0, 0, w, h)
-        val baseline = if (used.isNotEmpty()) used else getActivePaletteSwatches()
-        android.util.Log.d("EditorVM.Threads", "computeThreadsFromGrid: baseline=${baseline.size}, img=${w}x${h}")
-        if (baseline.isEmpty()) return emptyList()
-        val argbToIdx = HashMap<Int, Int>(baseline.size * 2)
-        baseline.forEachIndexed { i, sw -> argbToIdx[sw.argb or (0xFF shl 24)] = i }
-        val counts = IntArray(baseline.size)
-        var i = 0
-        while (i < total) {
-            val c = px[i] or (0xFF shl 24)
-            val j = argbToIdx[c]
-            if (j != null) counts[j]++ else {
-                val r = (c shr 16) and 0xFF; val g = (c shr 8) and 0xFF; val b = c and 0xFF
-                var best = 0; var bestD = Int.MAX_VALUE; var k = 0
-                while (k < baseline.size) {
-                    val a = baseline[k].argb
-                    val dr = r - ((a shr 16) and 0xFF)
-                    val dg = g - ((a shr 8) and 0xFF)
-                    val db = b - (a and 0xFF)
-                    val d = dr*dr + dg*dg + db*db
-                    if (d < bestD) { bestD = d; best = k }
-                    k++
-                }
-                counts[best]++
-            }
-            i++
-        }
-        return baseline.mapIndexed { bi, sw ->
-            val cnt = counts[bi]
-            ThreadItem(sw.code, sw.name, sw.argb, percent = (cnt * 100) / total, count = cnt)
-        }.filter { it.count > 0 }.sortedByDescending { it.count }
-    }
+           }
 
     fun updateOptions(transform: (OptionsState) -> OptionsState) {
         _state.value = _state.value.copy(options = transform(_state.value.options))
@@ -706,17 +437,13 @@ private data class PipelineSnapshot(
 
         val pal = paletteRepository?.get(paletteId)
         if (pal == null || pal.colors.isEmpty()) {
-            android.util.Log.w(
-                "EditorVM.Threads",
-                "computeThreadStatsAgainstPalette: palette empty → HEX fallback, limit=$limit, img=${w}x${h}"
-            )
             // Fallback: топ-N по #RRGGBB
             val counts = HashMap<Int, Int>(1024)
             for (c in px) {
                 val rgb = c and 0x00FFFFFF
                 counts[rgb] = (counts[rgb] ?: 0) + 1
             }
-            val res = counts.entries
+            return counts.entries
                 .sortedByDescending { it.value }
                 .take(limit.coerceAtLeast(1))
                 .map { (rgb, cnt) ->
@@ -730,19 +457,10 @@ private data class PipelineSnapshot(
                     count = cnt
                 )
             }
-            android.util.Log.d(
-                "EditorVM.Threads",
-                "computeThreadStatsAgainstPalette(HEX) -> ${res.size} items: " + res.joinToString { it.code }
-            )
-            return res
         }
         val colors = pal.colors
         val n = colors.size
         if (n == 0) return emptyList()
-        android.util.Log.d(
-            "EditorVM.Threads",
-            "computeThreadStatsAgainstPalette: palColors=$n, limit=$limit, img=${w}x${h}"
-        )
         // 1) Сжимаем картинку до уникальных RGB → счётчики
         val uniq = HashMap<Int, Int>(min(total, 2048))
         var idx = 0
@@ -782,7 +500,7 @@ private data class PipelineSnapshot(
             }
             counts[best] += cnt
         }
-        val res = counts
+        return counts
             .mapIndexed { i, cnt -> i to cnt }
             .filter { it.second > 0 }
             .sortedByDescending { it.second }
@@ -797,12 +515,6 @@ private data class PipelineSnapshot(
                 count = cnt
             )
         }
-        android.util.Log.d(
-            "EditorVM.Threads",
-            "computeThreadStatsAgainstPalette(res)[${res.size}]: " +
-                    res.joinToString { "${it.code}:${it.percent}%(${it.count})" }
-        )
-        return res
     }
 
     // --- Edge prefilter: лёгкий unsharp‑mask перед k‑means ---
@@ -897,95 +609,5 @@ private data class PipelineSnapshot(
                 _state.value = _state.value.copy(isBusy = false, error = t.message)
             }
         }
-    }
-
-    // ──────────────────────────────────────────────────────────────
-// Авто-прогон после импорта: SmartScene → AutoProcessor → Threads
-// ──────────────────────────────────────────────────────────────
-    private fun runAutoOnImportIfNeeded(imported: Bitmap) {
-        if (!_autoProcessOnImport.value) return
-        autoJob?.cancel()
-        autoJob = viewModelScope.launch {
-            _state.value = _state.value.copy(isBusy = true, error = null)
-            try {
-                // 1) Ранний SmartScene-hint
-                val decision = withContext(Dispatchers.Default) { SmartSceneDetector.detect(imported) }
-                _importSceneHint.value = ImportSceneHint(
-                    kind = decision.mode.name,
-                    confidence = decision.confidence,
-                    top3 = listOf(
-                        "DISCRETE" to (decision.scores[SmartSceneDetector.Mode.DISCRETE] ?: 0f),
-                        "PHOTO"    to (decision.scores[SmartSceneDetector.Mode.PHOTO]    ?: 0f)
-                    )
-                )
-                // 2) Обработка через AutoProcessor
-                val palette = getActivePaletteSwatches()
-                android.util.Log.i("EditorVM.Auto", "Auto: calling AutoProcessor.process, mode=${decision.mode}, palette=${palette.size}")
-                val out = withContext(Dispatchers.Default) { autoProcessor.process(imported, palette, decision) }
-                android.util.Log.i("EditorVM.Auto", "Auto: AutoProcessor.process done, kind=${out.kind}, S=${out.widthStitches}, usedSwatches=${out.usedSwatches.size}")
-
-                // 3) Подсчёт ниток/символов — ПРИОРИТЕТНО по реально использованным swatch’ам
-                val threads = withContext(Dispatchers.Default) {
-                    val uniq = uniqueColors(out.image.asImageBitmap())
-                    android.util.Log.i(
-                        "EditorVM.Auto",
-                        "Auto: usedSwatches=${out.usedSwatches.size}, uniqColors=$uniq, activePalette=${palette.size}"
-                    )
-                    if (out.usedSwatches.isNotEmpty()) {
-                        computeThreadsFromUsed(out)
-                    } else {
-                        val limit = palette.size.coerceAtLeast(1)
-                        android.util.Log.w(
-                            "EditorVM.Threads",
-                            "Fallback to palette mapping: limit=$limit, paletteId=${getActivePaletteId()}"
-                        )
-                        computeThreadStatsAgainstPalette(out.image.asImageBitmap(), limit, getActivePaletteId())
-                        }
-                }
-                _threads.value = threads
-                autoAssignSymbolsForThreads(threads)
-                commitSymbolsForPreview()
-
-                // 4) Публикация результата (тайминг)
-                Perf.trace("EditorVM.Auto", "publish ${out.kind.name}") {
-                    appliedPalette = out.image.asImageBitmap()
-                    _autoSummary.value = AutoSummary(widthSt = out.widthStitches, colors = out.usedSwatches.size)
-                    _importSceneHint.value = _importSceneHint.value?.copy(
-                        kind = out.kind.name,
-                        widthStitches = out.widthStitches,
-                        colorsSelected = out.usedSwatches.size
-                    )
-                    val next = _state.value.copy(previewImage = appliedPalette)
-                    pushSnapshot(next)
-                    _state.value = next.copy(isBusy = false)
-                }
-            } catch (t: Throwable) {
-                _state.value = _state.value.copy(isBusy = false, error = t.message)
-                android.util.Log.w("EditorVM.Auto", "auto process failed", t)
-            }
-        }
-    }
-
-
-    // ──────────────────────────────────────────────────────────────
-    // Детект для «Импорт»: SmartSceneDetector из :core (тип + top‑3)
-    // ──────────────────────────────────────────────────────────────
-    private suspend fun detectSceneForImport() {
-        val img = state.value.sourceImage ?: return
-        val bm = img.asAndroidBitmap()
-        // 1) Детект в фоне + ранний hint (с таймингом)
-        val decision = Perf.traceSuspend("EditorVM.Auto", "SmartScene.detect") {
-            withContext(Dispatchers.Default) { SmartSceneDetector.detect(bm) }
-        }
-        val sc = decision.scores
-        val hint = ImportSceneHint(
-            kind = decision.mode.name,                  // DISCRETE | PHOTO
-            confidence = decision.confidence,
-            top3 = listOf(
-                "DISCRETE" to (sc[SmartSceneDetector.Mode.DISCRETE] ?: 0f),
-                "PHOTO"    to (sc[SmartSceneDetector.Mode.PHOTO]    ?: 0f)
-            )
-        )
-        _importSceneHint.value = hint
     }
 }

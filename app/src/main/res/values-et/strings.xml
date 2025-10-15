@@ -1,0 +1,119 @@
+<resources>
+    <!-- navigation -->
+    <string name="nav_editor">Redaktor</string>
+    <string name="nav_tab_import">Import</string>
+    <string name="nav_tab_preprocess">Eeltöötlus</string>
+    <string name="nav_tab_size">Suurus</string>
+    <string name="nav_tab_palette">Palett</string>
+    <string name="nav_tab_options">Suvandid</string>
+    <string name="nav_tab_preview">Eelvaade</string>
+
+    <!-- common -->
+    <string name="common_apply">Rakenda</string>
+    <string name="common_open">Ava</string>
+    <string name="common_share">Jaga</string>
+    <string name="common_delete">Kustuta</string>
+    <string name="common_ok">OK</string>
+    <string name="common_cancel">Loobu</string>
+    <string name="common_undo">Võta tagasi</string>
+    <string name="common_redo">Tee uuesti</string>
+
+    <!-- import -->
+    <string name="import_title">Import</string>
+    <string name="import_description">Valige pilt süsteemse valija kaudu. Kuvatakse mini‑eelvaade ja suurus.</string>
+    <string name="import_select_image">Vali pilt</string>
+    <string name="import_mini_preview">Mini‑eelvaade</string>
+    <string name="import_no_image">Pilti pole valitud.</string>
+    <string name="import_recent_exports">Hiljutised ekspordid</string>
+    <string name="import_size_px">Suurus: %1$d×%2$d px</string>
+
+    <!-- preview -->
+    <string name="preview_title">Eelvaade</string>
+    <string name="preview_grid">Võrk</string>
+    <string name="preview_symbols">Sümbolid</string>
+    <string name="preview_export_cell_label">Lahter (eksport):</string>
+    <string name="preview_export_cell_px">%1$d px</string>
+    <string name="preview_export_png">Ekspordi PNG</string>
+    <string name="preview_export_pdf">Ekspordi PDF</string>
+    <string name="preview_prompt_import">Laadige pilt vahekaardil „Import”.</string>
+
+    <!-- preview zoom -->
+    <string name="preview_zoom_fit">Sobita</string>
+    <string name="preview_zoom_100">100%</string>
+    <string name="preview_zoom_in">Suurenda</string>
+    <string name="preview_zoom_out">Vähenda</string>
+    <string name="preview_zoom_hud">%1$d%%</string>
+
+    <!-- palette -->
+    <string name="palette_assets_title">Palett (assets)</string>
+    <string name="palette_max_colors">Maksimaalne värvide arv</string>
+    <string name="palette_zero_means_no_limit">0 = piirang puudub</string>
+    <string name="palette_metric_title">Värvimõõdik</string>
+    <string name="palette_metric_de2000">ΔE2000</string>
+    <string name="palette_metric_de76">ΔE76 (Lab)</string>
+    <string name="palette_metric_oklab">OKLab</string>
+    <string name="palette_dithering_title">Dithering</string>
+    <string name="palette_dithering_none">Pole</string>
+    <string name="palette_dithering_fs">FS</string>
+    <string name="palette_dithering_atkinson">Atkinson</string>
+    <string name="palette_kmeans_note">K‑means: vähenda värvid K‑ni (mitte paletist).</string>
+    <string name="palette_threads_title">Niidid (pärast «Rakenda»)</string>
+    <string name="palette_estimate_params">Hindamise parameetrid:</string>
+    <string name="palette_fabric_st_per_inch">Kangas: pst/toll</string>
+    <string name="palette_strands">Niidid</string>
+    <string name="palette_waste_pct">Kadu, %</string>
+    <string name="palette_press_apply_to_calc_threads">Vajutage «Rakenda», et arvutada niidid.</string>
+    <string name="palette_set_symbols">Määra sümbolid</string>
+    <string name="palette_symbol_for_x">Sümbol %1$s jaoks</string>
+    <string name="palette_symbol_1_char">Sümbol (1 märk)</string>
+
+    <!-- preprocess -->
+    <string name="preprocess_bright_contrast">Heledus / Kontrast</string>
+    <string name="preprocess_brightness_pct">Heledus: %1$d %%</string>
+    <string name="preprocess_contrast_pct">Kontrast: %1$d %%</string>
+    <string name="preprocess_gamma">Gamma</string>
+    <string name="preprocess_gamma_value">γ = %1$.2f</string>
+    <string name="preprocess_auto_levels">Automaatnivood (histogrammi venitus)</string>
+    <string name="preprocess_denoise">Müravähendus</string>
+    <string name="preprocess_denoise_none">Puudub</string>
+    <string name="preprocess_denoise_low">Madal</string>
+    <string name="preprocess_denoise_medium">Keskmine</string>
+    <string name="preprocess_denoise_high">Kõrge</string>
+    <string name="preprocess_tonal">Toonide kompressioon (pehmendab kontrasti)</string>
+    <string name="preprocess_tonal_value">%1$.2f</string>
+    <string name="preprocess_note_before">Kõik parameetrid rakendatakse ENNE taasproovistamist ja kvantimist.</string>
+
+    <!-- size -->
+    <string name="size_title">Suurus</string>
+    <string name="size_st_per_inch">pst/toll</string>
+    <string name="size_st_per_cm">pst/cm</string>
+    <string name="size_preset">Eelseadistus</string>
+    <string name="size_by_width">Laiuse järgi</string>
+    <string name="size_by_height">Kõrguse järgi</string>
+    <string name="size_by_dpi">DPI järgi</string>
+    <string name="size_width_stitches">Laius (pisted)</string>
+    <string name="size_height_stitches">Kõrgus (pisted)</string>
+    <string name="size_density">Tihedus (pst/toll või pst/cm)</string>
+    <string name="size_keep_aspect">Säilita kuvasuhe</string>
+    <string name="size_pages_target">Lehekülgi (eesmärk)</string>
+    <string name="size_density_label_inch">%1$d pst/toll</string>
+    <string name="size_density_label_cm">%1$.2f pst/cm</string>
+    <string name="size_physical_summary">Tiheduse ~%1$.2f korral: laius %2$.2f&quot; (%3$.2f cm), kõrgus %4$.2f&quot; (%5$.2f cm)</string>
+    <string name="size_physical_size">%1$.2f × %2$.2f</string>
+
+    <!-- options -->
+    <string name="options_palette_title">Palett</string>
+    <string name="options_dmc_as_is">DMC (nagu on)</string>
+    <string name="options_adaptive_to_dmc">Adaptatiivne → DMC</string>
+    <string name="options_merge_deltae">Ühenda lähedased värvid (ΔE): %1$.2f</string>
+    <string name="options_dither_title">Dithering (nutikas FS)</string>
+    <string name="options_dither_strength_pct">Tugevus: %1$d %%</string>
+    <string name="options_clean_singles">Puhasta üksikud pisted</string>
+    <string name="options_resample_title">Ümberproovistamine</string>
+    <string name="options_resample_avg">Keskmine lahtri kohta</string>
+    <string name="options_resample_simple">Lihtne (kiirem)</string>
+    <string name="options_preblur_sigma">Eelhägustus σ = %1$.2f px</string>
+    <string name="options_recommendation">Soovitatav: «Keskmine», FS ~50%, üksikute pistete puhastamine.</string>
+
+    <string name="app_name">AppForCross</string>
+</resources>

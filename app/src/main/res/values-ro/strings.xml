@@ -1,0 +1,119 @@
+<resources>
+    <!-- navigation -->
+    <string name="nav_editor">Editor</string>
+    <string name="nav_tab_import">Importare</string>
+    <string name="nav_tab_preprocess">Preprocesare</string>
+    <string name="nav_tab_size">Dimensiune</string>
+    <string name="nav_tab_palette">Paletă</string>
+    <string name="nav_tab_options">Opțiuni</string>
+    <string name="nav_tab_preview">Previzualizare</string>
+
+    <!-- common -->
+    <string name="common_apply">Aplică</string>
+    <string name="common_open">Deschide</string>
+    <string name="common_share">Partajează</string>
+    <string name="common_delete">Șterge</string>
+    <string name="common_ok">OK</string>
+    <string name="common_cancel">Anulează</string>
+    <string name="common_undo">Anulează</string>
+    <string name="common_redo">Refă</string>
+
+    <!-- import -->
+    <string name="import_title">Importare</string>
+    <string name="import_description">Alegeți o imagine folosind selectorul sistemului. Se vor afișa o mini‑previzualizare și dimensiunea.</string>
+    <string name="import_select_image">Alege imaginea</string>
+    <string name="import_mini_preview">Mini‑previzualizare</string>
+    <string name="import_no_image">Nicio imagine selectată.</string>
+    <string name="import_recent_exports">Exporturi recente</string>
+    <string name="import_size_px">Dimensiune: %1$d×%2$d px</string>
+
+    <!-- preview -->
+    <string name="preview_title">Previzualizare</string>
+    <string name="preview_grid">Grilă</string>
+    <string name="preview_symbols">Simboluri</string>
+    <string name="preview_export_cell_label">Celulă (export):</string>
+    <string name="preview_export_cell_px">%1$d px</string>
+    <string name="preview_export_png">Exportă PNG</string>
+    <string name="preview_export_pdf">Exportă PDF</string>
+    <string name="preview_prompt_import">Încărcați o imagine în fila „Importare”.</string>
+
+    <!-- preview zoom -->
+    <string name="preview_zoom_fit">Potrivește</string>
+    <string name="preview_zoom_100">100%</string>
+    <string name="preview_zoom_in">Mărire</string>
+    <string name="preview_zoom_out">Micșorare</string>
+    <string name="preview_zoom_hud">%1$d%%</string>
+
+    <!-- palette -->
+    <string name="palette_assets_title">Paletă (din assets)</string>
+    <string name="palette_max_colors">Număr maxim de culori</string>
+    <string name="palette_zero_means_no_limit">0 = fără limită</string>
+    <string name="palette_metric_title">Metrica culorii</string>
+    <string name="palette_metric_de2000">ΔE2000</string>
+    <string name="palette_metric_de76">ΔE76 (Lab)</string>
+    <string name="palette_metric_oklab">OKLab</string>
+    <string name="palette_dithering_title">Dithering</string>
+    <string name="palette_dithering_none">Fără dithering</string>
+    <string name="palette_dithering_fs">FS</string>
+    <string name="palette_dithering_atkinson">Atkinson</string>
+    <string name="palette_kmeans_note">K‑means: reduce culorile la K (nu din paletă).</string>
+    <string name="palette_threads_title">Fire (după «Aplică»)</string>
+    <string name="palette_estimate_params">Parametri de estimare:</string>
+    <string name="palette_fabric_st_per_inch">Material: pct/inch</string>
+    <string name="palette_strands">Fire</string>
+    <string name="palette_waste_pct">Pierdere, %</string>
+    <string name="palette_press_apply_to_calc_threads">Apăsați «Aplică» pentru a calcula firele.</string>
+    <string name="palette_set_symbols">Setează simboluri</string>
+    <string name="palette_symbol_for_x">Simbol pentru %1$s</string>
+    <string name="palette_symbol_1_char">Simbol (1 caracter)</string>
+
+    <!-- preprocess -->
+    <string name="preprocess_bright_contrast">Luminozitate / Contrast</string>
+    <string name="preprocess_brightness_pct">Luminozitate: %1$d %%</string>
+    <string name="preprocess_contrast_pct">Contrast: %1$d %%</string>
+    <string name="preprocess_gamma">Gamma</string>
+    <string name="preprocess_gamma_value">γ = %1$.2f</string>
+    <string name="preprocess_auto_levels">Nivele automate (întinderea histogramei)</string>
+    <string name="preprocess_denoise">Reducere zgomot</string>
+    <string name="preprocess_denoise_none">Niciunul</string>
+    <string name="preprocess_denoise_low">Scăzut</string>
+    <string name="preprocess_denoise_medium">Mediu</string>
+    <string name="preprocess_denoise_high">Ridicat</string>
+    <string name="preprocess_tonal">Compresie tonală (înmoaie contrastul)</string>
+    <string name="preprocess_tonal_value">%1$.2f</string>
+    <string name="preprocess_note_before">Toți parametrii se aplică ÎNAINTE de re‑eșantionare și cuantizare.</string>
+
+    <!-- size -->
+    <string name="size_title">Dimensiune</string>
+    <string name="size_st_per_inch">pct/inch</string>
+    <string name="size_st_per_cm">pct/cm</string>
+    <string name="size_preset">Presetare</string>
+    <string name="size_by_width">După lățime</string>
+    <string name="size_by_height">După înălțime</string>
+    <string name="size_by_dpi">După DPI</string>
+    <string name="size_width_stitches">Lățime (puncte)</string>
+    <string name="size_height_stitches">Înălțime (puncte)</string>
+    <string name="size_density">Densitate (pct/inch sau pct/cm)</string>
+    <string name="size_keep_aspect">Păstrează proporțiile</string>
+    <string name="size_pages_target">Pagini (țintă)</string>
+    <string name="size_density_label_inch">%1$d pct/inch</string>
+    <string name="size_density_label_cm">%1$.2f pct/cm</string>
+    <string name="size_physical_summary">La densitate ~%1$.2f: lățime %2$.2f&quot; (%3$.2f cm), înălțime %4$.2f&quot; (%5$.2f cm)</string>
+    <string name="size_physical_size">%1$.2f × %2$.2f</string>
+
+    <!-- options -->
+    <string name="options_palette_title">Paletă</string>
+    <string name="options_dmc_as_is">DMC (ca atare)</string>
+    <string name="options_adaptive_to_dmc">Adaptivă → DMC</string>
+    <string name="options_merge_deltae">Combină culorile apropiate (ΔE): %1$.2f</string>
+    <string name="options_dither_title">Dithering (FS inteligent)</string>
+    <string name="options_dither_strength_pct">Intensitate: %1$d %%</string>
+    <string name="options_clean_singles">Curăță punctele singulare</string>
+    <string name="options_resample_title">Re‑eșantionare</string>
+    <string name="options_resample_avg">Medie pe celulă</string>
+    <string name="options_resample_simple">Simplu (mai rapid)</string>
+    <string name="options_preblur_sigma">Pre‑blur σ = %1$.2f px</string>
+    <string name="options_recommendation">Recomandat: «Medie», FS ~50%, curățarea punctelor singulare.</string>
+
+    <string name="app_name">AppForCross</string>
+</resources>

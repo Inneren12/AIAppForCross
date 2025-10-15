@@ -2,6 +2,7 @@ package com.appforcross.editor.auto.photo.hq
 
 import android.graphics.Bitmap
 import android.util.Log
+import com.appforcross.core.palette.Swatch
 
 /**
  * Новый оркестратор: выбор масштаба → пресет → палитра → рендер → приёмка (ретрай при необходимости).
@@ -10,9 +11,9 @@ import android.util.Log
 object PhotoHQ {
 
     data class Result(
-        val bitmap: Bitmap,
-        val usedSwatches: Int,
-        val S: Int,
+        val image: Bitmap,                 // ← жёсткий контракт
+        val gridWidth: Int,                // ← жёсткий контракт
+        val usedSwatches: List<Swatch>,    // ← жёсткий контракт
         val params: PresetGate.Params,
         val metrics: AcceptanceGuard.Metrics
     )
@@ -30,6 +31,7 @@ object PhotoHQ {
         threadPalette: List<*>,
         scaleCandidates: IntArray = intArrayOf(180, 200, 240, 300, 360, 400, 480, 600, 720)
     ): Result {
+        val used: List<Swatch> = collectUsedSwatches(frameF.bitmap, threadPalette)
         // 1) Выбор масштаба + кэш превью
         val choice = ScaleSelector.select(source, scaleCandidates)
         Log.d("PhotoHQ.Scale", "pick S=${choice.S} probe=${choice.probe}")
@@ -62,9 +64,9 @@ object PhotoHQ {
         }
 
         return Result(
-            bitmap = frameF.bitmap,
-            usedSwatches = frameF.usedSwatches,
-            S = choice.S,
+            image = frameF.bitmap,
+            gridWidth = choice.S,
+            usedSwatches = used,
             params = paramsF,
             metrics = accF
         )

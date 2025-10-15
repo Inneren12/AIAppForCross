@@ -1,0 +1,119 @@
+<resources>
+    <!-- navigation -->
+    <string name="nav_editor">Editor</string>
+    <string name="nav_tab_import">Import</string>
+    <string name="nav_tab_preprocess">Předzpracování</string>
+    <string name="nav_tab_size">Velikost</string>
+    <string name="nav_tab_palette">Paleta</string>
+    <string name="nav_tab_options">Možnosti</string>
+    <string name="nav_tab_preview">Náhled</string>
+
+    <!-- common -->
+    <string name="common_apply">Použít</string>
+    <string name="common_open">Otevřít</string>
+    <string name="common_share">Sdílet</string>
+    <string name="common_delete">Smazat</string>
+    <string name="common_ok">OK</string>
+    <string name="common_cancel">Zrušit</string>
+    <string name="common_undo">Zpět</string>
+    <string name="common_redo">Znovu</string>
+
+    <!-- import -->
+    <string name="import_title">Import</string>
+    <string name="import_description">Vyberte obrázek pomocí systémového výběru. Zobrazí se mini náhled a velikost.</string>
+    <string name="import_select_image">Vybrat obrázek</string>
+    <string name="import_mini_preview">Mini náhled</string>
+    <string name="import_no_image">Není vybrán žádný obrázek.</string>
+    <string name="import_recent_exports">Poslední exporty</string>
+    <string name="import_size_px">Velikost: %1$d×%2$d px</string>
+
+    <!-- preview -->
+    <string name="preview_title">Náhled</string>
+    <string name="preview_grid">Mřížka</string>
+    <string name="preview_symbols">Symboly</string>
+    <string name="preview_export_cell_label">Buňka (export):</string>
+    <string name="preview_export_cell_px">%1$d px</string>
+    <string name="preview_export_png">Export PNG</string>
+    <string name="preview_export_pdf">Export PDF</string>
+    <string name="preview_prompt_import">Na kartě „Import“ načtěte obrázek.</string>
+
+    <!-- preview zoom -->
+    <string name="preview_zoom_fit">Přizpůsobit</string>
+    <string name="preview_zoom_100">100%</string>
+    <string name="preview_zoom_in">Přiblížit</string>
+    <string name="preview_zoom_out">Oddálit</string>
+    <string name="preview_zoom_hud">%1$d%%</string>
+
+    <!-- palette -->
+    <string name="palette_assets_title">Paleta (z assets)</string>
+    <string name="palette_max_colors">Maximum barev</string>
+    <string name="palette_zero_means_no_limit">0 = bez omezení</string>
+    <string name="palette_metric_title">Barevná metrika</string>
+    <string name="palette_metric_de2000">ΔE2000</string>
+    <string name="palette_metric_de76">ΔE76 (Lab)</string>
+    <string name="palette_metric_oklab">OKLab</string>
+    <string name="palette_dithering_title">Dithering</string>
+    <string name="palette_dithering_none">Bez ditheringu</string>
+    <string name="palette_dithering_fs">FS</string>
+    <string name="palette_dithering_atkinson">Atkinson</string>
+    <string name="palette_kmeans_note">K‑means: zredukuje barvy na K (ne z palety).</string>
+    <string name="palette_threads_title">Nitě (po „Použít“)</string>
+    <string name="palette_estimate_params">Parametry odhadu:</string>
+    <string name="palette_fabric_st_per_inch">Tkanina: st./palec</string>
+    <string name="palette_strands">Vlákna</string>
+    <string name="palette_waste_pct">Odpady, %</string>
+    <string name="palette_press_apply_to_calc_threads">Stiskněte „Použít“ pro výpočet nití.</string>
+    <string name="palette_set_symbols">Nastavit symboly</string>
+    <string name="palette_symbol_for_x">Symbol pro %1$s</string>
+    <string name="palette_symbol_1_char">Symbol (1 znak)</string>
+
+    <!-- preprocess -->
+    <string name="preprocess_bright_contrast">Jas / Kontrast</string>
+    <string name="preprocess_brightness_pct">Jas: %1$d %%</string>
+    <string name="preprocess_contrast_pct">Kontrast: %1$d %%</string>
+    <string name="preprocess_gamma">Gama</string>
+    <string name="preprocess_gamma_value">γ = %1$.2f</string>
+    <string name="preprocess_auto_levels">Automatické úrovně (roztažení histogramu)</string>
+    <string name="preprocess_denoise">Redukce šumu</string>
+    <string name="preprocess_denoise_none">Žádné</string>
+    <string name="preprocess_denoise_low">Nízké</string>
+    <string name="preprocess_denoise_medium">Střední</string>
+    <string name="preprocess_denoise_high">Vysoké</string>
+    <string name="preprocess_tonal">Tónová komprese (změkčit kontrast)</string>
+    <string name="preprocess_tonal_value">%1$.2f</string>
+    <string name="preprocess_note_before">Všechny parametry se aplikují PŘED resamplingem a kvantizací.</string>
+
+    <!-- size -->
+    <string name="size_title">Velikost</string>
+    <string name="size_st_per_inch">st./palec</string>
+    <string name="size_st_per_cm">st./cm</string>
+    <string name="size_preset">Přednastavení</string>
+    <string name="size_by_width">Podle šířky</string>
+    <string name="size_by_height">Podle výšky</string>
+    <string name="size_by_dpi">Podle DPI</string>
+    <string name="size_width_stitches">Šířka (stehy)</string>
+    <string name="size_height_stitches">Výška (stehy)</string>
+    <string name="size_density">Hustota (st./palec nebo st./cm)</string>
+    <string name="size_keep_aspect">Zachovat poměr stran</string>
+    <string name="size_pages_target">Stránek (cíl)</string>
+    <string name="size_density_label_inch">%1$d st./palec</string>
+    <string name="size_density_label_cm">%1$.2f st./cm</string>
+    <string name="size_physical_summary">Při hustotě ~%1$.2f: šířka %2$.2f&quot; (%3$.2f cm), výška %4$.2f&quot; (%5$.2f cm)</string>
+    <string name="size_physical_size">%1$.2f × %2$.2f</string>
+
+    <!-- options -->
+    <string name="options_palette_title">Paleta</string>
+    <string name="options_dmc_as_is">DMC (beze změny)</string>
+    <string name="options_adaptive_to_dmc">Adaptivní → DMC</string>
+    <string name="options_merge_deltae">Sloučit blízké barvy (ΔE): %1$.2f</string>
+    <string name="options_dither_title">Dithering (chytrý FS)</string>
+    <string name="options_dither_strength_pct">Síla: %1$d %%</string>
+    <string name="options_clean_singles">Čistit osamělé stehy</string>
+    <string name="options_resample_title">Převzorkování</string>
+    <string name="options_resample_avg">Průměr na buňku</string>
+    <string name="options_resample_simple">Jednoduché (rychlejší)</string>
+    <string name="options_preblur_sigma">Předrozostření σ = %1$.2f px</string>
+    <string name="options_recommendation">Doporučeno: „Průměr“, FS ~50 %, čistit osamělé stehy.</string>
+
+    <string name="app_name">AppForCross</string>
+</resources>

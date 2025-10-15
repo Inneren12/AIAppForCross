@@ -23,18 +23,10 @@ import com.appforcross.core.image.DecodedImage
 import android.content.Intent
 import androidx.documentfile.provider.DocumentFile
 import com.appforcross.i18n.LocalStrings
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
-import kotlinx.coroutines.launch
-import androidx.compose.runtime.rememberCoroutineScope
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import androidx.compose.runtime.rememberCoroutineScope
 
 @Composable
 fun ImportTab(vm: EditorViewModel) {
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
     val S = LocalStrings.current
     val exports by vm.exports.collectAsState()
     var thumb: ImageBitmap? by remember { mutableStateOf(null) }
@@ -54,35 +46,27 @@ fun ImportTab(vm: EditorViewModel) {
             }
         }
 
-    val openDoc = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocument()
-    ) { uri ->
-        if (uri != null) {
-            scope.launch {
-                // I/O: читаем байты вне UI
-                val bytes = withContext(Dispatchers.IO) {
-                    context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
-                }
-                if (bytes != null) {
-                    // CPU: декод ядром (ваш локальный decoder) в фоне
-                    val dec = withContext(Dispatchers.Default) { decoder.decode(bytes) }
-                    val bmp = withContext(Dispatchers.Default) {
-                        Bitmap.createBitmap(dec.width, dec.height, Bitmap.Config.ARGB_8888).apply {
-                            setPixels(dec.argb, 0, dec.width, 0, 0, dec.width, dec.height)
-                        }
-                    }
-                    val img = bmp.asImageBitmap()
-                    val aspect = dec.width.toFloat() / dec.height.coerceAtLeast(1)
-                    // На главном: фиксируем источник и подсказку сцены
-                    withContext(Dispatchers.Main) {
-                        vm.setSource(img, aspect) // ранний hint
+        val openDoc = rememberLauncherForActivityResult(
+            contract = ActivityResultContracts.OpenDocument(),
+            onResult = { uri ->
+                if (uri != null) {
+                    val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                    if (bytes != null) {
+                        val dec = decoder.decode(bytes)
+                        // Конвертация в ImageBitmap для UI и VM
+                        val bmp = Bitmap.createBitmap(dec.width, dec.height, Bitmap.Config.ARGB_8888)
+                        bmp.setPixels(dec.argb, 0, dec.width, 0, 0, dec.width, dec.height)
+                        val img = bmp.asImageBitmap()
+                        val aspect = dec.width.toFloat() / dec.height.coerceAtLeast(1)
+                        // В проекте уже есть метод setSource(ImageBitmap, aspect) — используем его
+                        vm.setSource(img, aspect) // :contentReference[oaicite:4]{index=4}
+                        // Мини‑превью без перерасчёта данных — просто ограничим размер отображения
                         thumb = img
                         meta = dec.width to dec.height
                     }
                 }
             }
-        }
-    }
+        )
 
     Column(Modifier.fillMaxSize()) {
         Section(S.import.sectionTitle) {
@@ -93,22 +77,6 @@ fun ImportTab(vm: EditorViewModel) {
                         onClick = { openDoc.launch(arrayOf("image/*")) }
                     ) { Text(S.import.selectImage) }
                 }
-            Spacer(Modifier.height(8.dp))
-            // ── Тумблер «Авто распознавание при импорте»
-            // ── Тумблеры: авто‑распознавание и авто‑обработка (после импорта)
-            val autoDetect by vm.autoDetectOnImport.collectAsState()
-            val autoProcess by vm.autoProcessOnImport.collectAsState()
-            Column {
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text("Авто распознавание при импорте")
-                    Switch(checked = autoDetect, onCheckedChange = vm::setAutoDetectOnImport)
-                }
-                Spacer(Modifier.height(6.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text("Авто обработка после импорта")
-                    Switch(checked = autoProcess, onCheckedChange = vm::setAutoProcessOnImport)
-                }
-            }
                 Spacer(Modifier.height(12.dp))
                 if (thumb != null && meta != null) {
                     val (w, h) = meta!!
@@ -123,36 +91,6 @@ fun ImportTab(vm: EditorViewModel) {
                             .height(160.dp),
                         contentScale = ContentScale.Fit
                     )
-
-                    // ── Сводка AutoS: ширина в стежках и число цветов
-                    val sum by vm.autoSummary.collectAsState()
-                    if (sum != null) {
-                        Spacer(Modifier.height(6.dp))
-                        AssistChip(
-                            onClick = { /* no-op */ },
-                            label = { Text("Ширина: ${sum!!.widthSt} стежков · Цветов: ${sum!!.colors}") }
-                        )
-                    }
-
-                    // ── Подсказка типа/уверенности от SmartSceneDetector (до обработки)
-                    val hint by vm.importSceneHint.collectAsState()
-                    if (hint != null) {
-                        Spacer(Modifier.height(8.dp))
-                        Card {
-                            Column(Modifier.padding(12.dp)) {
-                                Text("Тип: ${hint!!.kind}")
-                                Text("Уверенность: ${"%.2f".format(hint!!.confidence)}")
-                                val top = hint!!.top3.joinToString { (k, p) -> "$k=${"%.2f".format(p)}" }
-                                Text("Top‑3: $top")
-                                if (hint!!.widthStitches != null || hint!!.colorsSelected != null) {
-                                    Spacer(Modifier.height(4.dp))
-                                    Text("Ширина: ${hint!!.widthStitches ?: "—"} стежков")
-                                    Text("Цветов (по палитре): ${hint!!.colorsSelected ?: "—"}")
-                                }
-                            }
-                        }
-                    }
-
                 } else {
                     Text(S.import.imageNotSelected)
                 }
@@ -194,12 +132,6 @@ fun ImportTab(vm: EditorViewModel) {
             }
 
             Spacer(Modifier.weight(1f))
-        // Активируем ручной Apply: без авто-тумблера пойдёт через Orchestrator.runManual()
-        ApplyBar(
-            enabled = vm.state.collectAsState().value.sourceImage != null &&
-                    !vm.state.collectAsState().value.isBusy
-        ) {
-            vm.applyImport()
-        }
+            ApplyBar(enabled = false, onApply = { })
     }
 }

@@ -1,4 +1,4 @@
-`package com.appforcross.editor.auto.photo.hq
+package com.appforcross.editor.auto.photo.hq
 
 import android.graphics.Bitmap
 import android.util.Log

@@ -1,0 +1,119 @@
+<resources>
+    <!-- navigation -->
+    <string name="nav_editor">Editor</string>
+    <string name="nav_tab_import">Importar</string>
+    <string name="nav_tab_preprocess">Pré‑processamento</string>
+    <string name="nav_tab_size">Tamanho</string>
+    <string name="nav_tab_palette">Paleta</string>
+    <string name="nav_tab_options">Opções</string>
+    <string name="nav_tab_preview">Pré‑visualização</string>
+
+    <!-- common -->
+    <string name="common_apply">Aplicar</string>
+    <string name="common_open">Abrir</string>
+    <string name="common_share">Partilhar</string>
+    <string name="common_delete">Eliminar</string>
+    <string name="common_ok">OK</string>
+    <string name="common_cancel">Cancelar</string>
+    <string name="common_undo">Anular</string>
+    <string name="common_redo">Refazer</string>
+
+    <!-- import -->
+    <string name="import_title">Importar</string>
+    <string name="import_description">Escolha uma imagem através do seletor do sistema. Uma mini‑pré‑visualização e o tamanho serão apresentados.</string>
+    <string name="import_select_image">Escolher imagem</string>
+    <string name="import_mini_preview">Mini‑pré‑visualização</string>
+    <string name="import_no_image">Nenhuma imagem selecionada.</string>
+    <string name="import_recent_exports">Exportações recentes</string>
+    <string name="import_size_px">Tamanho: %1$d×%2$d px</string>
+
+    <!-- preview -->
+    <string name="preview_title">Pré‑visualização</string>
+    <string name="preview_grid">Grelha</string>
+    <string name="preview_symbols">Símbolos</string>
+    <string name="preview_export_cell_label">Célula (exportação):</string>
+    <string name="preview_export_cell_px">%1$d px</string>
+    <string name="preview_export_png">Exportar PNG</string>
+    <string name="preview_export_pdf">Exportar PDF</string>
+    <string name="preview_prompt_import">Carregue uma imagem no separador «Importar».</string>
+
+    <!-- preview zoom -->
+    <string name="preview_zoom_fit">Ajustar</string>
+    <string name="preview_zoom_100">100%</string>
+    <string name="preview_zoom_in">Aproximar</string>
+    <string name="preview_zoom_out">Afastar</string>
+    <string name="preview_zoom_hud">%1$d%%</string>
+
+    <!-- palette -->
+    <string name="palette_assets_title">Paleta (a partir de assets)</string>
+    <string name="palette_max_colors">Máximo de cores</string>
+    <string name="palette_zero_means_no_limit">0 = sem limite</string>
+    <string name="palette_metric_title">Métrica de cor</string>
+    <string name="palette_metric_de2000">ΔE2000</string>
+    <string name="palette_metric_de76">ΔE76 (Lab)</string>
+    <string name="palette_metric_oklab">OKLab</string>
+    <string name="palette_dithering_title">Tramado</string>
+    <string name="palette_dithering_none">Sem tramado</string>
+    <string name="palette_dithering_fs">FS</string>
+    <string name="palette_dithering_atkinson">Atkinson</string>
+    <string name="palette_kmeans_note">K‑means: reduzir para K cores (não a partir da paleta).</string>
+    <string name="palette_threads_title">Linhas (após «Aplicar»)</string>
+    <string name="palette_estimate_params">Parâmetros de estimativa:</string>
+    <string name="palette_fabric_st_per_inch">Tecido: pt/pol</string>
+    <string name="palette_strands">Fios</string>
+    <string name="palette_waste_pct">Desperdício, %</string>
+    <string name="palette_press_apply_to_calc_threads">Prima «Aplicar» para calcular as linhas.</string>
+    <string name="palette_set_symbols">Definir símbolos</string>
+    <string name="palette_symbol_for_x">Símbolo para %1$s</string>
+    <string name="palette_symbol_1_char">Símbolo (1 caractere)</string>
+
+    <!-- preprocess -->
+    <string name="preprocess_bright_contrast">Brilho / Contraste</string>
+    <string name="preprocess_brightness_pct">Brilho: %1$d %%</string>
+    <string name="preprocess_contrast_pct">Contraste: %1$d %%</string>
+    <string name="preprocess_gamma">Gama</string>
+    <string name="preprocess_gamma_value">γ = %1$.2f</string>
+    <string name="preprocess_auto_levels">Níveis automáticos (estiramento do histograma)</string>
+    <string name="preprocess_denoise">Redução de ruído</string>
+    <string name="preprocess_denoise_none">Nenhum</string>
+    <string name="preprocess_denoise_low">Baixo</string>
+    <string name="preprocess_denoise_medium">Médio</string>
+    <string name="preprocess_denoise_high">Alto</string>
+    <string name="preprocess_tonal">Compressão tonal (suavizar o contraste)</string>
+    <string name="preprocess_tonal_value">%1$.2f</string>
+    <string name="preprocess_note_before">Todos os parâmetros são aplicados ANTES da reamostragem e da quantização.</string>
+
+    <!-- size -->
+    <string name="size_title">Tamanho</string>
+    <string name="size_st_per_inch">pt/pol</string>
+    <string name="size_st_per_cm">pt/cm</string>
+    <string name="size_preset">Predefinição</string>
+    <string name="size_by_width">Por largura</string>
+    <string name="size_by_height">Por altura</string>
+    <string name="size_by_dpi">Por DPI</string>
+    <string name="size_width_stitches">Largura (pontos)</string>
+    <string name="size_height_stitches">Altura (pontos)</string>
+    <string name="size_density">Densidade (pt/pol ou pt/cm)</string>
+    <string name="size_keep_aspect">Manter proporção</string>
+    <string name="size_pages_target">Páginas (objetivo)</string>
+    <string name="size_density_label_inch">%1$d pt/pol</string>
+    <string name="size_density_label_cm">%1$.2f pt/cm</string>
+    <string name="size_physical_summary">A densidade ~%1$.2f: largura %2$.2f&quot; (%3$.2f cm), altura %4$.2f&quot; (%5$.2f cm)</string>
+    <string name="size_physical_size">%1$.2f × %2$.2f</string>
+
+    <!-- options -->
+    <string name="options_palette_title">Paleta</string>
+    <string name="options_dmc_as_is">DMC (como está)</string>
+    <string name="options_adaptive_to_dmc">Adaptativa → DMC</string>
+    <string name="options_merge_deltae">Unir cores próximas (ΔE): %1$.2f</string>
+    <string name="options_dither_title">Tramado (FS inteligente)</string>
+    <string name="options_dither_strength_pct">Intensidade: %1$d %%</string>
+    <string name="options_clean_singles">Limpar pontos isolados</string>
+    <string name="options_resample_title">Reamostragem</string>
+    <string name="options_resample_avg">Média por célula</string>
+    <string name="options_resample_simple">Simples (mais rápido)</string>
+    <string name="options_preblur_sigma">Pré‑desfocar σ = %1$.2f px</string>
+    <string name="options_recommendation">Recomendado: «Média», FS ~50%, limpar pontos isolados.</string>
+
+    <string name="app_name">AppForCross</string>
+</resources>

@@ -39,7 +39,8 @@
     <string name="preview_prompt_import">Load an image on the Import tab.</string>
 
     <!-- preview zoom -->
-    <string name="preview_zoom_fit">Fit (≤100%)</string><string name="preview_zoom_fill">Fill</string><string name="preview_zoom_100">100%</string>
+    <string name="preview_zoom_fit">Fit</string>
+    <string name="preview_zoom_100">100%</string>
     <string name="preview_zoom_in">Zoom in</string>
     <string name="preview_zoom_out">Zoom out</string>
     <string name="preview_zoom_hud">%1$d%%</string>

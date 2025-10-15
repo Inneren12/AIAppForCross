@@ -9,10 +9,10 @@ import com.appforcross.core.color.Metric
 import com.appforcross.core.color.argbToOkLab
 import com.appforcross.core.dither.Dither
 import com.appforcross.core.dither.dither
+import com.appforcross.core.image.Raster
 import com.appforcross.core.quant.kmeansLab
 import com.appforcross.editor.model.*
 import kotlin.math.*
-import com.appforcross.core.image.Raster
 
 class CoreEngine : EditorEngine {
     // === PREPROCESS ===

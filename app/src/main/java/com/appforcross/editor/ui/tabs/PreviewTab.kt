@@ -39,7 +39,6 @@ import kotlin.math.max
 import androidx.compose.material3.FilterChip
 import androidx.compose.foundation.rememberScrollState
 import android.content.Intent
-import android.util.Log
 import com.appforcross.i18n.LocalStrings
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.TransformOrigin
@@ -48,12 +47,6 @@ import kotlin.math.roundToInt
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.runtime.produceState
-import androidx.compose.ui.layout.onSizeChanged
-import kotlinx.coroutines.withContext
-import androidx.compose.runtime.produceState
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 // Локальный тип для режима вписывания
 private enum class FitMode { Fit, OneToOne, Custom }
@@ -68,17 +61,6 @@ fun PreviewTab(vm: EditorViewModel) {
     // Реактивно следим за активной палитрой и перечитаем swatches при её смене
     val activePalId by vm.activePaletteId.collectAsState()
     val palSwatches = remember(activePalId) { vm.getActivePaletteSwatches() }
-    // ФАКТИЧЕСКИ ИСПОЛЬЗОВАННЫЕ НИТКИ (чтобы не «слипать» все к ближайшим из всей палитры)
-    val threads by vm.threads.collectAsState()
-    val usedSwatches = remember(threads, palSwatches) {
-        if (threads.isEmpty()) palSwatches
-        else palSwatches.filter { sw -> threads.any { it.code == sw.code } }
-    }
-    LaunchedEffect(threads, symbols) {
-        Log.d("PreviewTab", "threads=${threads.size}, symbols=${symbols.size}")
-        if (threads.isNotEmpty())
-            Log.d("PreviewTab", "top: ${threads.take(8).joinToString { it.code }}")
-    }
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     var exportCell by rememberSaveable { mutableStateOf(16) } // размер клетки при экспорте
@@ -133,32 +115,18 @@ fun PreviewTab(vm: EditorViewModel) {
             }
             }
 
-        Box(
+        BoxWithConstraints(
             Modifier
                 .fillMaxWidth()
                 .weight(1f),
-        contentAlignment = Alignment.Center
+            contentAlignment = Alignment.Center
         ) {
-            // Размер области предпросмотра в px
-            var boxPx by remember { mutableStateOf(androidx.compose.ui.unit.IntSize.Zero) }
-            LaunchedEffect(Unit) { scale = 1f; offset = Offset.Zero; fitMode = FitMode.Fit }
-
             val bmp = st.previewImage ?: st.sourceImage
             if (bmp != null) {
-                val density = LocalDensity.current
-                // Подписываемся на изменение размеров коробки
-                LaunchedEffect(Unit) { /* no-op, просто чтобы блок ниже не мигал */ }
-                // Оборачиваем визуальный слой, чтобы поймать реальные px
-                Box(
-                    Modifier
-                        .fillMaxSize()
-                        .onSizeChanged { boxPx = it }
-                ) {}
-                val boxW = boxPx.width.coerceAtLeast(1)
-                val boxH = boxPx.height.coerceAtLeast(1)
+                val boxW = constraints.maxWidth
+                val boxH = constraints.maxHeight
                 val imgW = bmp.width
                 val imgH = bmp.height
-                // Базовый масштаб для "вписать"
                 // Базовый масштаб для "вписать"
                 val fitScale = minOf(boxW.toFloat() / imgW, boxH.toFloat() / imgH)
                 // Габариты слоя без дополнительного зума (масштаб = 1f)
@@ -170,6 +138,7 @@ fun PreviewTab(vm: EditorViewModel) {
                     offset = Offset.Zero
                     fitMode = FitMode.Fit
                 }
+                val density = LocalDensity.current
                 val drawWd = with(density) { drawW.toDp() }
                 val drawHd = with(density) { drawH.toDp() }
                 // Хелпер ограничений для пана
@@ -195,7 +164,6 @@ fun PreviewTab(vm: EditorViewModel) {
                 fun setFit() {
                     scale = 1f; offset = Offset.Zero; fitMode = FitMode.Fit
                 }
-
                 fun setOneToOne() {
                     val s = (1f / fitScale).coerceIn(minScale, maxScale)
                     scale = s
@@ -217,13 +185,13 @@ fun PreviewTab(vm: EditorViewModel) {
                     Modifier
                         .size(drawWd, drawHd)
                     .graphicsLayer {
-                            transformOrigin = TransformOrigin(0f, 0f)
-                            translationX = offset.x
-                            translationY = offset.y
-                            scaleX = scale
-                            scaleY = scale
-                        }
-                        // жесты: pinch‑zoom + pan
+                    transformOrigin = TransformOrigin(0f, 0f)
+                    translationX = offset.x
+                    translationY = offset.y
+                    scaleX = scale
+                    scaleY = scale
+                }
+                    // жесты: pinch‑zoom + pan
                 .pointerInput(bmp, drawW, drawH, fitScale) {
                     detectTransformGestures(panZoomLock = true) { centroid, pan, gestureZoom, _ ->
                         val old = scale
@@ -235,7 +203,7 @@ fun PreviewTab(vm: EditorViewModel) {
                         fitMode = if (abs(ns - 1f) < 0.01f) FitMode.Fit else FitMode.Custom
                     }
                 }
-                        // двойной тап: Fit <-> 100%
+                    // двойной тап: Fit <-> 100%
                 .pointerInput(bmp, fitScale) {
                     detectTapGestures(onDoubleTap = { pos ->
                         val oneToOne = (1f / fitScale).coerceIn(minScale, maxScale)
@@ -253,43 +221,30 @@ fun PreviewTab(vm: EditorViewModel) {
                         modifier = Modifier.fillMaxSize(),
                         contentScale = ContentScale.FillBounds
                     )
-                    // 1) Буфер пикселей — в фоне
-                    val readyForOverlay = (showGrid || showSymbols)
-                    val pxBuf by produceState<IntArray?>(initialValue = null, bmp, readyForOverlay) {
-                        value = if (!readyForOverlay) null else withContext(Dispatchers.Default) {
-                            val ab = bmp.asAndroidBitmap()
-                            IntArray(ab.width * ab.height).also {
-                                ab.getPixels(it, 0, ab.width, 0, 0, ab.width, ab.height)
-                            }
-                        }
+                    // --- Подготовка буферов/кэшей для оверлеев ---
+                    val pxBuf = remember(bmp) {
+                        val ab = bmp.asAndroidBitmap()
+                        val n = ab.width * ab.height
+                        IntArray(n).also { ab.getPixels(it, 0, ab.width, 0, 0, ab.width, ab.height) }
                     }
-                    // КЭШ: ARGB -> индекс swatch ТОЛЬКО среди реально используемых ниток.
-                    // Сначала пробуем точное совпадение ARGB, затем – ближайший по RGB.
-                    val colorToSwatchIndex by produceState<Map<Int, Int>?>(initialValue = null,
-                        bmp, activePalId, threads, usedSwatches, readyForOverlay, pxBuf) {
-                        value = if (!readyForOverlay) null else withContext(Dispatchers.Default) {
-                            val buf = pxBuf ?: return@withContext null
-                            if (usedSwatches.isEmpty()) return@withContext null
-                            val n = usedSwatches.size
+                    // КЭШ: уникальные ARGB -> индекс ближайшего swatch (ускорение O(K×N) вместо O(W×H×N))
+                    val colorToSwatchIndex = remember(bmp, activePalId) {
+                        if (palSwatches.isEmpty()) null else {
+                            val n = palSwatches.size
                             val swR = IntArray(n); val swG = IntArray(n); val swB = IntArray(n)
-                            val exact = HashMap<Int, Int>(n * 2)
                             for (i in 0 until n) {
-                                val a = usedSwatches[i].argb or (0xFF shl 24)
-                                swR[i] = (a shr 16) and 0xFF
-                                swG[i] = (a shr 8) and 0xFF
-                                swB[i] =  a        and 0xFF
-                                exact[a] = i
+                                val a = palSwatches[i].argb
+                                swR[i] = (a shr 16) and 0xFF; swG[i] = (a shr 8) and 0xFF; swB[i] = a and 0xFF
                             }
-                            val uniq = LinkedHashSet<Int>(buf.size / 4 + 1)
-                            for (c0 in buf) uniq.add(c0 or (0xFF shl 24))
+                            val uniq = LinkedHashSet<Int>(pxBuf.size / 4 + 1)
+                            for (c in pxBuf) uniq.add(c or (0xFF shl 24))
                             val map = HashMap<Int, Int>(uniq.size * 2)
                             for (c in uniq) {
-                                // 1) точное попадание в один из используемых swatch’ей
-                                val hit = exact[c]
-                                if (hit != null) { map[c] = hit; continue }
-                                // 2) ближайший среди usedSwatches (без выхода в остальную палитру)
-                                val r = (c shr 16) and 0xFF; val g = (c shr 8) and 0xFF; val b = c and 0xFF
-                                var best = 0; var bestD = Int.MAX_VALUE; var i = 0
+                                val r = (c shr 16) and 0xFF
+                                val g = (c shr 8) and 0xFF
+                                val b = c and 0xFF
+                                var best = 0; var bestD = Int.MAX_VALUE
+                                var i = 0
                                 while (i < n) {
                                     val dr = r - swR[i]; val dg = g - swG[i]; val db = b - swB[i]
                                     val d = dr*dr + dg*dg + db*db
@@ -301,11 +256,9 @@ fun PreviewTab(vm: EditorViewModel) {
                             map
                         }
                     }
-
                     // --- Оверлеи ---
                     if (showGrid || showSymbols) {
                         Canvas(Modifier.fillMaxSize()) {
-                            val buf = pxBuf ?: return@Canvas
                             val cell = size.width / imgW // базовый (до зума)
                             val cellOnScreen = cell * scale
                             // Сетка 10x10
@@ -334,8 +287,7 @@ fun PreviewTab(vm: EditorViewModel) {
                                 }
                             }
                             // Символы (если клетка достаточно крупная)
-                            if (showSymbols && cellOnScreen >= 10f && usedSwatches.isNotEmpty() && symbols.isNotEmpty()) {
-                                // pxBuf может быть ещё не готов → выходим из Canvas, чтобы не крашиться
+                            if (showSymbols && cellOnScreen >= 10f && palSwatches.isNotEmpty() && symbols.isNotEmpty()) {
                                 val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                                     textAlign = Paint.Align.CENTER
                                     textSize = cell * 0.82f
@@ -346,9 +298,10 @@ fun PreviewTab(vm: EditorViewModel) {
                                 for (y in 0 until imgH) {
                                     val cy = (y + 0.7f) * cell
                                     for (x in 0 until imgW) {
-                                        val c = buf[idx++]
-                                        val best = colorToSwatchIndex?.get(c or (0xFF shl 24)) ?: 0
-                                        val code = usedSwatches[best].code
+                                        val c = pxBuf[idx++]
+                                        val best = colorToSwatchIndex?.get(c or (0xFF shl 24))
+                                            ?: 0 // безопасный фоллбек
+                                        val code = palSwatches[best].code
                                         val ch = symbols[code] ?: continue
                                         // Контраст символа к фону
                                         val r = (c shr 16) and 0xFF
