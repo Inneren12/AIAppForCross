@@ -889,11 +889,12 @@ object PhotoHQ {
         }
 
         // 5) (опц.) пост-чистка «песка»: одиночные пиксели → цвет большинства
-        // Пост-чистка одиночек ПОСЛЕ смешивания (ранний блок) — без несуществующих переменных
+                // (локально считаем маску кожи из зон wz, чтобы не зависеть от переменных другой области)
         if (PhotoConfig.B5.CLEAN_SINGLETONS) {
             val flatMask2 = EdgeMeter.flatMask(srcS, PhotoConfig.B5.FLAT_GRAD_T)
-            val scope = BooleanArray(n) { i -> skinMaskLocal[i] || flatMask2[i] }
-            cleanSingletonsMajority1(out, srcS.width, srcS.height, strongEdge, scope)
+            val scope = BooleanArray(out.size) { i -> (wz.skin[i] > 0.5f) || flatMask2[i] }
+            // protect = edgeMaskStrong (в этой функции strongEdge нет)
+            cleanSingletonsMajority1(out, srcS.width, srcS.height, edgeMaskStrong, scope)
             HQLog.s("post.clean: majority1 applied (skin∪flat)")
         }
 
@@ -963,10 +964,8 @@ object PhotoHQ {
         val n = rasterS.argb.size
         var postCleanApplied = false
         // 0) Базовые карты и маски
-        // «Сильные» края (по модулю градиента): берём как !flatMask(τ=0.06)
-        // реальные «сильные» края и узкая лента вокруг них для FS
-        val nonStrong = EdgeMeter.flatMask(srcS, 0.06f)
-        val strongEdge = BooleanArray(n) { !nonStrong[it] }
+        // «Сильные» края: используем тот же детектор, что уже применяется в buildPaletteForS(...)
+        val strongEdge = EdgeMeter.strongEdgeMask(srcS, 1.25f)
         // если где-то ниже требуется edgeRibbon — используем ту же маску (без константы FS_RIBBON_RADIUS)
         val edgeRibbon = dilateMask(strongEdge, srcS.width, srcS.height, r = 1)
         // Узкая «лента» вокруг сильных краёв (FS только здесь)
