@@ -333,7 +333,7 @@ object PhotoHQ {
         else (IntArray(0) to FloatArray(0))
             // 2) Капы по зонам
         val rest = (K - baseK).coerceAtLeast(0)
-        val caps = if (rest > 0) {
+        var caps = if (rest > 0) {
             val b = RAQBounds(
                 PhotoConfig.B5.SKY_MIN,   PhotoConfig.B5.SKY_MAX,
                 PhotoConfig.B5.CLOUD_MIN, PhotoConfig.B5.CLOUD_MAX,
@@ -345,6 +345,30 @@ object PhotoHQ {
             )
             PaletteAllocator.allocateCaps(wz, edgeMaskStrong, rest, b)
         } else emptyMap()
+        // Жёстко гарантируем мин. для кожи/тёмного фона; избыток снимаем с второстепенных зон
+        fun enforceMinCaps(c: MutableMap<Zone, Int>, restAll: Int) {
+            fun raise(z: Zone, minV: Int) { c[z] = maxOf(c[z] ?: 0, minV) }
+            raise(Zone.SKIN,   PhotoConfig.B5.SKIN_MIN)
+            raise(Zone.GROUND, PhotoConfig.B5.GROUND_MIN)
+            var sum = c.values.sum()
+            if (sum > restAll) {
+                var over = sum - restAll
+                val donors = arrayOf(Zone.BUILT, Zone.VEG, Zone.WATER, Zone.SKY, Zone.CLOUD)
+                for (z in donors) {
+                    if (over <= 0) break
+                    val cur = c[z] ?: 0
+                    val dec = minOf(cur, over)
+                    c[z] = cur - dec
+                    over -= dec
+                }
+            }
+        }
+        if (rest > 0) {
+            val fixed = caps.toMutableMap()
+            enforceMinCaps(fixed, rest)
+            caps = fixed
+            HQLog.auto("RAQ.capsFixed=$caps")
+        }
         HQLog.auto("RAQ.before=$K caps=$caps (base=$baseK rest=$rest)")
         // 3) Зональные центры по капам
         val zoneArgb = ArrayList<Int>()
@@ -939,10 +963,10 @@ object PhotoHQ {
 
         // 0) Базовые карты и маски
         // «Сильные» края (по модулю градиента): берём как !flatMask(τ=0.06)
-        val nonStrong = EdgeMeter.flatMask(srcS, 0.06f)
-        val strongEdge = BooleanArray(n) { !nonStrong[it] }
+        // реальные «сильные» края и узкая лента вокруг них для FS
+        val strongEdge = EdgeMeter.strongEdgeMask(srcS, 0.12f)
+        val edgeRibbon = dilateMask(strongEdge, srcS.width, srcS.height, r = PhotoConfig.B5.FS_RIBBON_RADIUS)
         // Узкая «лента» вокруг сильных краёв (FS только здесь)
-        val edgeRibbon = dilateMask(strongEdge, srcS.width, srcS.height, r = 1)
 
         // [B5-D] 0a) Тон/гамма: мягкая S-кривая по L* перед квантованием
         if (TONE_CURVE_ENABLED) {
@@ -955,7 +979,9 @@ object PhotoHQ {
             applyEdgeAwareBlurL(rasterS, srcS.width, srcS.height, strongEdge, PRE_BLUR_SIGMA_PX)
             HQLog.pre("pre.blur: edge-aware L σ=$PRE_BLUR_SIGMA_PX (off strong edges)")
         }
-        val preNoDither = quantNearest(rasterS, paletteLab, paletteArgb)    // OFF вариант
+        // Хрома‑компрессия в светах (до квантования)
+        compressChromaInHighlights(paletteLab)
+        val preNoDither = quantNearest(rasterS, paletteLab, paletteArgb) // OFF вариант
         // Majority-clean 3×3 до дизера, вне сильных/тонких структур
         if (MAJORITY_CLEAN_ENABLED) {
             val thinMask = computeThinMask(strongEdge, srcS.width, srcS.height, THIN_COMPONENT_MAX)
@@ -1021,6 +1047,25 @@ object PhotoHQ {
                 ty++
             }
         }
+
+        // Где применяем ORDERED: skin ∪ flat, вне ленты и не слишком тёмно
+        val darkMask = BooleanArray(n) { lStarPlane[it] < PhotoConfig.B5.DARK_L_T }
+        val flatMask = EdgeMeter.flatMask(srcS, PhotoConfig.B5.FLAT_GRAD_T)
+        val orderedMask = BooleanArray(n) { i ->
+            (skinMaskLocal[i] || flatMask[i]) && !edgeRibbon[i] && !darkMask[i]
+        }
+        val orderedAll = if (PhotoConfig.B5.USE_BLUE_NOISE) {
+            com.appforcross.core.dither.ditherOrdered8x8TilesBN(
+                rasterS, paletteLab, paletteArgb, Metric.OKLAB,
+                ampTiles, wTiles, hTiles, tile, orderedMask, blueNoise = true
+            )
+        } else {
+                com.appforcross.core.dither.ditherOrdered8x8Tiles(
+                rasterS, paletteLab, paletteArgb, Metric.OKLAB,
+                ampTiles, wTiles, hTiles, tile, orderedMask
+            )
+        }
+
         // Один проход ORDERED с тайловой амплитудой
         val orderedAll = ditherOrdered8x8Tiles(
             input = rasterS,
@@ -1092,15 +1137,17 @@ object PhotoHQ {
         )
 
         // Пост-чистка одиночек ПОСЛЕ смешивания: scope = skin ∪ flat, guard = strongEdge
-        if (PhotoConfig.B5.CLEAN_SINGLETONS) {
+        if (PhotoConfig.B5.CLEAN_SINGLETONS && !postCleanApplied) {
             val flatMask = EdgeMeter.flatMask(srcS, PhotoConfig.B5.FLAT_GRAD_T)
             val scope = BooleanArray(n) { i -> skinMaskLocal[i] || flatMask[i] }
             cleanSingletonsMajority1(
                 out, srcS.width, srcS.height,
                 protect = strongEdge,
+                protect = edgeRibbon,
                 scopeFlat = scope
             )
             HQLog.s("post.clean: majority1 applied (skin∪flat)")
+            postCleanApplied = true
         }
         HQLog.s(
             "orderedAmp: mean=${"%.3f".format(meanAmp)}, p95=${"%.3f".format(p95Amp)}; fsAniso: along=1.00, across=0.40"
@@ -1245,6 +1292,18 @@ object PhotoHQ {
             }
             px[i] = (a shl 24) or (r shl 16) or (g shl 8) or b
             i++
+        }
+    }
+
+    private fun compressChromaInHighlights(lab: FloatArray) {
+        var i = 0
+        while (i < lab.size) {
+            val L = lab[i]
+            val t = ((L - 0.75f) / 0.20f).coerceIn(0f, 1f) // 0.75..0.95
+            val k = 1f - 0.6f * t                           // до −60% хромы
+            lab[i + 1] *= k
+            lab[i + 2] *= k
+            i += 3
         }
     }
 
