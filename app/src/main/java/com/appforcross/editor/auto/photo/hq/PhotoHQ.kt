@@ -44,6 +44,8 @@ private const val MAJORITY_CLEAN_ENABLED: Boolean = true   // majority 3×3 пе
 // Максимальный размер «тонкой» компоненты (в пикселях) для guard majority/сглаживания
 private const val THIN_COMPONENT_MAX = 24
 private const val TONE_CURVE_ENABLED: Boolean = true
+// Узкая «лента» вокруг сильных краёв для применения FS
+private const val FS_RIBBON_RADIUS: Int = 1
 private const val TONE_GAMMA_IN: Float = 0.83f        // gamma_in ≈ 1/1.9
 private const val TONE_HIGHLIGHT_COMP: Float = 0.06f // компрессия верхних 12% L*
 private const val NEUTRAL_ANCHORS_ON: Boolean = true
@@ -887,13 +889,11 @@ object PhotoHQ {
         }
 
         // 5) (опц.) пост-чистка «песка»: одиночные пиксели → цвет большинства
-        if (PhotoConfig.B5.CLEAN_SINGLETONS) {
-            cleanSingletonsMajority1(
-                out, srcS.width, srcS.height,
-                protect = edgeMaskStrong, // не трогаем сильные края
-                scopeFlat = flat          // работаем в плоских зонах
-            )
-
+        if (PhotoConfig.B5.CLEAN_SINGLETONS && !postCleanApplied)  {
+            // позиционные аргументы (без имён), чтобы не ловить "Argument already passed"
+            cleanSingletonsMajority1(out, srcS.width, srcS.height, edgeRibbon, scope)
+            HQLog.s("post.clean: majority1 applied (skin∪flat)")
+            postCleanApplied = true
         }
 
         // 6) (опц.) SLIC-lite: стабилизируем плоские регионы (не трогаем сильные края)
@@ -960,7 +960,7 @@ object PhotoHQ {
         val srcS = scaleToWidth(source, targetWidthSt)
         val rasterS = Raster(srcS.width, srcS.height, bitmapToIntArray(srcS))
         val n = rasterS.argb.size
-
+        var postCleanApplied = false
         // 0) Базовые карты и маски
         // «Сильные» края (по модулю градиента): берём как !flatMask(τ=0.06)
         // реальные «сильные» края и узкая лента вокруг них для FS
@@ -981,7 +981,9 @@ object PhotoHQ {
         }
         // Хрома‑компрессия в светах (до квантования)
         compressChromaInHighlights(paletteLab)
-        val preNoDither = quantNearest(rasterS, paletteLab, paletteArgb) // OFF вариант
+        // Небольшая хрома-компрессия в светах, чтобы не «цвели» блики
+        compressChromaInHighlights(paletteLab)
+        val preNoDither = quantNearest(rasterS, paletteLab, paletteArgb) // OFF-ветка
         // Majority-clean 3×3 до дизера, вне сильных/тонких структур
         if (MAJORITY_CLEAN_ENABLED) {
             val thinMask = computeThinMask(strongEdge, srcS.width, srcS.height, THIN_COMPONENT_MAX)
@@ -996,7 +998,7 @@ object PhotoHQ {
         val skinMaskLocal = skinMaskYCbCr(srcS)
 
         // Быстрая «яркость» (Y) для детекта тёмного фона (порог ~0.10)
-        val darkMask = BooleanArray(n)
+        var darkMask = BooleanArray(n)
         run {
             val a = rasterS.argb
             var i = 0
@@ -1049,12 +1051,15 @@ object PhotoHQ {
         }
 
         // Где применяем ORDERED: skin ∪ flat, вне ленты и не слишком тёмно
-        val darkMask = BooleanArray(n) { lStarPlane[it] < PhotoConfig.B5.DARK_L_T }
+        // 1) Гибридный дизеринг — подготовка L* и тёмной маски (ОДИН раз)
+        val labForL = com.appforcross.core.color.argbToOkLab(rasterS.argb)
+        val lStarPlane = FloatArray(n) { i -> labForL[i * 3] }
+        darkMask = BooleanArray(n) { i -> lStarPlane[i] < PhotoConfig.B5.DARK_L_T }
         val flatMask = EdgeMeter.flatMask(srcS, PhotoConfig.B5.FLAT_GRAD_T)
         val orderedMask = BooleanArray(n) { i ->
             (skinMaskLocal[i] || flatMask[i]) && !edgeRibbon[i] && !darkMask[i]
         }
-        val orderedAll = if (PhotoConfig.B5.USE_BLUE_NOISE) {
+        var orderedAll = if (PhotoConfig.B5.USE_BLUE_NOISE) {
             com.appforcross.core.dither.ditherOrdered8x8TilesBN(
                 rasterS, paletteLab, paletteArgb, Metric.OKLAB,
                 ampTiles, wTiles, hTiles, tile, orderedMask, blueNoise = true
@@ -1066,18 +1071,17 @@ object PhotoHQ {
             )
         }
 
-        // Один проход ORDERED с тайловой амплитудой
-        val orderedAll = ditherOrdered8x8Tiles(
-            input = rasterS,
-            allowedLab = paletteLab,
-            allowedArgb = paletteArgb,
-            metric = Metric.OKLAB,
-            ampTiles = ampTiles,
-            wTiles = wTiles,
-            hTiles = hTiles,
-            tile = tile,
-            mask = null // маску можно передать при необходимости ограничить область ORDERED
-        )
+        orderedAll = if (PhotoConfig.B5.USE_BLUE_NOISE) {
+            com.appforcross.core.dither.ditherOrdered8x8TilesBN(
+                rasterS, paletteLab, paletteArgb, Metric.OKLAB,
+                ampTiles, wTiles, hTiles, tile, orderedMask, blueNoise = true
+            )
+        } else {
+            com.appforcross.core.dither.ditherOrdered8x8Tiles(
+                rasterS, paletteLab, paletteArgb, Metric.OKLAB,
+                ampTiles, wTiles, hTiles, tile, orderedMask
+            )
+        }
 
         // FS‑анизотропный по краю: вдоль 1.0, поперёк 0.40
         val fs = when (preferMode) {
@@ -1095,27 +1099,18 @@ object PhotoHQ {
         var bgFS = 0; var bgORD = 0; var bgOFF = 0
         var i = 0
         while (i < n) {
-            val useFS  = strongEdge[i]                 // по сильным краям — FS
-            val useOFF = !useFS && darkMask[i]         // очень тёмный фон — OFF
-            val useORD = !useFS && !useOFF             // остальное — ORDERED (тайловая амплитуда)
-
-            val isSkin = skinMaskLocal[i] && !strongEdge[i]
-            val px = when {
-                useFS -> {
-                    if (isSkin) skinFS++ else bgFS++
-                    cntFS++; fs.argb[i]
-                }
-                useOFF -> {
-                    if (isSkin) skinOFF++ else bgOFF++
-                    cntOFF++; preNoDither.argb[i]
-                }
-                else -> { // ORDERED
+            val useFS  = edgeRibbon[i]          // только в «ленте»
+            val useOFF = !useFS && darkMask!![i]  // очень тёмный фон
+            val isSkin = skinMaskLocal[i] && !useFS
+            out[i] = when {
+                useFS  -> { if (isSkin) skinFS++ else bgFS++; cntFS++; fs.argb[i] }
+                useOFF -> { if (isSkin) skinOFF++ else bgOFF++; cntOFF++; preNoDither.argb[i] }
+                else   -> {
                     if (isSkin) skinORD++ else bgORD++
-                    if (bandMask[i]) cntORDs++ else cntORDb++ // для логов base/strong
-                    orderedAll.argb[i]
+                    if (bandMask[i]) cntORDs++ else cntORDb++
+                    orderedAll.argb!![i]
                 }
             }
-            out[i] = px
             i++
         }
 
@@ -1152,16 +1147,14 @@ object PhotoHQ {
         HQLog.s(
             "orderedAmp: mean=${"%.3f".format(meanAmp)}, p95=${"%.3f".format(p95Amp)}; fsAniso: along=1.00, across=0.40"
         )
-        // Пост-чистка одиночек ПОСЛЕ смешивания (skin ∪ flat, вне сильных краёв)
-        if (PhotoConfig.B5.CLEAN_SINGLETONS) {
-            val flatMask = EdgeMeter.flatMask(srcS, PhotoConfig.B5.FLAT_GRAD_T)
-            val scope = BooleanArray(n) { i -> skinMaskLocal[i] || flatMask[i] }
-            cleanSingletonsMajority1(
-                out, srcS.width, srcS.height,
-                protect = strongEdge,
-                scopeFlat = scope
-            )
+        // Пост-чистка одиночек ПОСЛЕ смешивания — один раз
+        if (PhotoConfig.B5.CLEAN_SINGLETONS && !postCleanApplied) {
+            val flatMask2 = EdgeMeter.flatMask(srcS, PhotoConfig.B5.FLAT_GRAD_T)
+            val scope = BooleanArray(n) { i -> skinMaskLocal[i] || flatMask2[i] }
+            // позиционные аргументы, чтобы не ловить «Argument already passed»
+            cleanSingletonsMajority1(out, srcS.width, srcS.height, edgeRibbon, scope)
             HQLog.s("post.clean: majority1 applied (skin∪flat)")
+            postCleanApplied = true
         }
         val bmp = intArrayToBitmap(out, srcS.width, srcS.height)
         val used = collectUsedSwatches(threadPalette, out)
