@@ -27,6 +27,7 @@ import com.appforcross.core.raq.PaletteAllocator
 import com.appforcross.core.raq.RAQBounds
 import com.appforcross.core.slic.SlicLite
 import kotlin.math.pow
+import com.appforcross.core.dither.ditherOrdered8x8Tiles
 
 /**
  * PhotoHQ Orchestrator (этап B.3):
@@ -985,14 +986,54 @@ object PhotoHQ {
             }
         }
 
-        // ORDERED 8x8: base=0.20, strong=+0.05 (cap 0.26); тёмный фон → OFF
         // 1) Гибридный дизеринг
-        // ORDERED 8×8: базовая и усиленная амплитуда; усиливаем только в окнах риска бэндинга
+        // ORDERED 8×8 по тайлам: базовая и усиленная амплитуда; усиливаем только в окнах риска бэндинга
         val AMP_BASE   = PhotoConfig.B5.ORDERED_AMP_BASE
         val AMP_STRONG = PhotoConfig.B5.ORDERED_AMP_STRONG
+        val tile = 8
+        val wTiles = (srcS.width + tile - 1) / tile
+        val hTiles = (srcS.height + tile - 1) / tile
+        val ampTiles = FloatArray(wTiles * hTiles) { AMP_BASE }
+        // Усиливаем амплитуду в тех тайлах, где доля banding-пикселей ≥ 25%
+        run {
+            var ty = 0
+            while (ty < hTiles) {
+                val y0 = ty * tile; val y1 = kotlin.math.min(srcS.height, y0 + tile)
+                var tx = 0
+                while (tx < wTiles) {
+                    val x0 = tx * tile; val x1 = kotlin.math.min(srcS.width, x0 + tile)
+                    var cnt = 0; var flagged = 0
+                    var y = y0
+                    while (y < y1) {
+                        val row = y * srcS.width
+                        var x = x0
+                        while (x < x1) {
+                            val ii = row + x
+                            if (bandMask[ii] && !strongEdge[ii]) flagged++
+                            cnt++; x++
+                        }
+                        y++
+                    }
+                    val share = if (cnt > 0) flagged.toFloat() / cnt else 0f
+                    if (share >= 0.25f) ampTiles[ty * wTiles + tx] = AMP_STRONG
+                    tx++
+                }
+                ty++
+            }
+        }
+        // Один проход ORDERED с тайловой амплитудой
+        val orderedAll = ditherOrdered8x8Tiles(
+            input = rasterS,
+            allowedLab = paletteLab,
+            allowedArgb = paletteArgb,
+            metric = Metric.OKLAB,
+            ampTiles = ampTiles,
+            wTiles = wTiles,
+            hTiles = hTiles,
+            tile = tile,
+            mask = null // маску можно передать при необходимости ограничить область ORDERED
+        )
 
-        val orderedBase = ditherOrderedBayer8(rasterS, paletteLab, paletteArgb, amp = AMP_BASE, metric = Metric.OKLAB)
-        val orderedStrong = ditherOrderedBayer8(rasterS, paletteLab, paletteArgb, amp = AMP_STRONG, metric = Metric.OKLAB)
         // FS‑анизотропный по краю: вдоль 1.0, поперёк 0.40
         val fs = when (preferMode) {
             PhotoConfig.DitherMode.NONE -> preNoDither
@@ -1008,10 +1049,10 @@ object PhotoHQ {
         var skinFS = 0; var skinORD = 0; var skinOFF = 0
         var bgFS = 0; var bgORD = 0; var bgOFF = 0
         var i = 0
-        while (i < n) { val useFS = strongEdge[i] // по сильным краям — FS
-            val useOFF = !useFS && darkMask[i] // очень тёмный фон — без дизера
-            val useORDstrong = !useFS && !useOFF && bandMask[i] // только в «плохих» окнах усиливаем
-            val useORDbase = !useFS && !useOFF && !useORDstrong
+        while (i < n) {
+            val useFS  = strongEdge[i]                 // по сильным краям — FS
+            val useOFF = !useFS && darkMask[i]         // очень тёмный фон — OFF
+            val useORD = !useFS && !useOFF             // остальное — ORDERED (тайловая амплитуда)
 
             val isSkin = skinMaskLocal[i] && !strongEdge[i]
             val px = when {
@@ -1023,13 +1064,10 @@ object PhotoHQ {
                     if (isSkin) skinOFF++ else bgOFF++
                     cntOFF++; preNoDither.argb[i]
                 }
-                useORDstrong -> {
+                else -> { // ORDERED
                     if (isSkin) skinORD++ else bgORD++
-                    cntORDs++; orderedStrong.argb[i]
-                }
-                else -> { // base
-                    if (isSkin) skinORD++ else bgORD++
-                    cntORDb++; orderedBase.argb[i]
+                    if (bandMask[i]) cntORDs++ else cntORDb++ // для логов base/strong
+                    orderedAll.argb[i]
                 }
             }
             out[i] = px
