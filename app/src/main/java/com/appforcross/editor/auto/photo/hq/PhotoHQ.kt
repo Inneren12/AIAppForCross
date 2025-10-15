@@ -889,11 +889,12 @@ object PhotoHQ {
         }
 
         // 5) (опц.) пост-чистка «песка»: одиночные пиксели → цвет большинства
-        if (PhotoConfig.B5.CLEAN_SINGLETONS && !postCleanApplied)  {
-            // позиционные аргументы (без имён), чтобы не ловить "Argument already passed"
-            cleanSingletonsMajority1(out, srcS.width, srcS.height, edgeRibbon, scope)
+        // Пост-чистка одиночек ПОСЛЕ смешивания (ранний блок) — без несуществующих переменных
+        if (PhotoConfig.B5.CLEAN_SINGLETONS) {
+            val flatMask2 = EdgeMeter.flatMask(srcS, PhotoConfig.B5.FLAT_GRAD_T)
+            val scope = BooleanArray(n) { i -> skinMaskLocal[i] || flatMask2[i] }
+            cleanSingletonsMajority1(out, srcS.width, srcS.height, strongEdge, scope)
             HQLog.s("post.clean: majority1 applied (skin∪flat)")
-            postCleanApplied = true
         }
 
         // 6) (опц.) SLIC-lite: стабилизируем плоские регионы (не трогаем сильные края)
@@ -964,8 +965,10 @@ object PhotoHQ {
         // 0) Базовые карты и маски
         // «Сильные» края (по модулю градиента): берём как !flatMask(τ=0.06)
         // реальные «сильные» края и узкая лента вокруг них для FS
-        val strongEdge = EdgeMeter.strongEdgeMask(srcS, 0.12f)
-        val edgeRibbon = dilateMask(strongEdge, srcS.width, srcS.height, r = PhotoConfig.B5.FS_RIBBON_RADIUS)
+        val nonStrong = EdgeMeter.flatMask(srcS, 0.06f)
+        val strongEdge = BooleanArray(n) { !nonStrong[it] }
+        // если где-то ниже требуется edgeRibbon — используем ту же маску (без константы FS_RIBBON_RADIUS)
+        val edgeRibbon = dilateMask(strongEdge, srcS.width, srcS.height, r = 1)
         // Узкая «лента» вокруг сильных краёв (FS только здесь)
 
         // [B5-D] 0a) Тон/гамма: мягкая S-кривая по L* перед квантованием
@@ -1132,17 +1135,11 @@ object PhotoHQ {
         )
 
         // Пост-чистка одиночек ПОСЛЕ смешивания: scope = skin ∪ flat, guard = strongEdge
-        if (PhotoConfig.B5.CLEAN_SINGLETONS && !postCleanApplied) {
-            val flatMask = EdgeMeter.flatMask(srcS, PhotoConfig.B5.FLAT_GRAD_T)
-            val scope = BooleanArray(n) { i -> skinMaskLocal[i] || flatMask[i] }
-            cleanSingletonsMajority1(
-                out, srcS.width, srcS.height,
-                protect = strongEdge,
-                protect = edgeRibbon,
-                scopeFlat = scope
-            )
+        if (PhotoConfig.B5.CLEAN_SINGLETONS) {
+            val flatMask2b = EdgeMeter.flatMask(srcS, PhotoConfig.B5.FLAT_GRAD_T)
+            val scope2 = BooleanArray(n) { i -> skinMaskLocal[i] || flatMask2b[i] }
+            cleanSingletonsMajority1(out, srcS.width, srcS.height, strongEdge, scope2)
             HQLog.s("post.clean: majority1 applied (skin∪flat)")
-            postCleanApplied = true
         }
         HQLog.s(
             "orderedAmp: mean=${"%.3f".format(meanAmp)}, p95=${"%.3f".format(p95Amp)}; fsAniso: along=1.00, across=0.40"
